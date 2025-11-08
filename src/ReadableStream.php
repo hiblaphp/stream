@@ -54,9 +54,7 @@ class ReadableStream implements ReadableStreamInterface
 
         if (in_array($streamType, ['tcp_socket', 'udp_socket', 'unix_socket', 'ssl_socket', 'TCP/IP', 'tcp_socket/ssl'])) {
             $shouldSetNonBlocking = true;
-        }
-       
-        elseif (!$isWindows && in_array($streamType, ['STDIO', 'PLAINFILE', 'TEMP', 'MEMORY'])) {
+        } elseif (!$isWindows && in_array($streamType, ['STDIO', 'PLAINFILE', 'TEMP', 'MEMORY'])) {
             $shouldSetNonBlocking = true;
         }
 
@@ -353,7 +351,7 @@ class ReadableStream implements ReadableStreamInterface
 
     public function isEof(): bool
     {
-        return $this->eof;
+        return $this->eof || ($this->resource && feof($this->resource));
     }
 
     public function isPaused(): bool
@@ -388,7 +386,7 @@ class ReadableStream implements ReadableStreamInterface
 
     private function startReading(): void
     {
-        if ($this->watcherId !== null || !$this->readable || $this->paused) {
+        if ($this->watcherId !== null || !$this->readable || $this->paused || $this->closed) {
             return;
         }
 
@@ -403,31 +401,28 @@ class ReadableStream implements ReadableStreamInterface
 
     private function handleReadable(): void
     {
-        if ($this->paused || !$this->readable || $this->eof) {
+        if ($this->paused || !$this->readable) {
             return;
         }
 
-        // Determine how much to read
         $readLength = $this->chunkSize;
         if (!empty($this->readQueue)) {
             $readLength = $this->readQueue[0]['length'] ?? $this->chunkSize;
         }
 
-        // Read from resource
         $data = @fread($this->resource, $readLength);
 
         if ($data === false) {
             $error = new StreamException('Failed to read from stream');
             $this->emit('error', $error);
-            
-            // Reject pending reads
+
             while (!empty($this->readQueue)) {
                 $item = array_shift($this->readQueue);
                 if (!$item['promise']->isCancelled()) {
                     $item['reject']($error);
                 }
             }
-            
+
             $this->close();
             return;
         }
@@ -436,7 +431,7 @@ class ReadableStream implements ReadableStreamInterface
         if ($data === '' && feof($this->resource)) {
             $this->eof = true;
             $this->pause();
-            
+
             // Resolve pending reads with null
             while (!empty($this->readQueue)) {
                 $item = array_shift($this->readQueue);
@@ -444,9 +439,9 @@ class ReadableStream implements ReadableStreamInterface
                     $item['resolve'](null);
                 }
             }
-            
+
             $this->emit('end');
-            $this->close();
+            // DON'T close here - let the user close or it will close on destruct
             return;
         }
 
@@ -461,10 +456,13 @@ class ReadableStream implements ReadableStreamInterface
                     $item['resolve']($data);
                 }
 
-                // Pause if no more reads pending
+                // Pause if no more reads pending and no data listeners
                 if (empty($this->readQueue) && !$this->hasListeners('data')) {
                     $this->pause();
                 }
+            } elseif (!$this->hasListeners('data')) {
+                // No pending reads and no data listeners, pause
+                $this->pause();
             }
         }
     }

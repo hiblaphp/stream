@@ -61,9 +61,7 @@ class WritableStream implements WritableStreamInterface
 
         if (in_array($streamType, ['tcp_socket', 'udp_socket', 'unix_socket', 'ssl_socket', 'TCP/IP', 'tcp_socket/ssl'])) {
             $shouldSetNonBlocking = true;
-        }
-      
-        elseif (!$isWindows && in_array($streamType, ['STDIO', 'PLAINFILE', 'TEMP', 'MEMORY'])) {
+        } elseif (!$isWindows && in_array($streamType, ['STDIO', 'PLAINFILE', 'TEMP', 'MEMORY'])) {
             $shouldSetNonBlocking = true;
         }
 
@@ -74,7 +72,11 @@ class WritableStream implements WritableStreamInterface
 
     public function write(string $data): CancellablePromiseInterface
     {
-        if (!$this->isWritable()) {
+        if (!$this->writable && !$this->ending) {
+            return $this->createRejectedCancellable(new StreamException('Stream is not writable'));
+        }
+
+        if ($this->closed) {
             return $this->createRejectedCancellable(new StreamException('Stream is not writable'));
         }
 
@@ -90,7 +92,7 @@ class WritableStream implements WritableStreamInterface
                 'resolve' => $resolve,
                 'reject' => $reject,
                 'bytes' => $bytesToWrite,
-                'promise' => null, 
+                'promise' => null,
             ];
 
             $this->writeQueue[] = &$queueItem;
@@ -114,12 +116,11 @@ class WritableStream implements WritableStreamInterface
 
     public function end(?string $data = null): CancellablePromiseInterface
     {
-        if (!$this->isWritable() || $this->ending) {
+        if ($this->ending || $this->closed) {
             return $this->createResolvedCancellable(null);
         }
 
         $this->ending = true;
-        $this->writable = false;
 
         $promise = new CancellablePromise(function ($resolve, $reject) use ($data) {
             $writePromise = null;
@@ -129,6 +130,8 @@ class WritableStream implements WritableStreamInterface
             }
 
             $finish = function () use ($resolve, $reject) {
+                $this->writable = false;
+
                 $this->waitForDrain()->then(function () use ($resolve) {
                     $this->emit('finish');
                     $this->close();
@@ -142,6 +145,7 @@ class WritableStream implements WritableStreamInterface
 
             if ($writePromise !== null) {
                 $writePromise->then($finish)->catch(function ($error) use ($reject) {
+                    $this->writable = false;
                     $this->emit('error', $error);
                     $this->close();
                     $reject($error);
@@ -199,7 +203,11 @@ class WritableStream implements WritableStreamInterface
 
     private function startWriting(): void
     {
-        if ($this->watcherId !== null || !$this->writable || $this->writeBuffer === '') {
+        if ($this->watcherId !== null || $this->closed || $this->writeBuffer === '') {
+            return;
+        }
+
+        if (!$this->writable && !$this->ending) {
             return;
         }
 
@@ -224,7 +232,6 @@ class WritableStream implements WritableStreamInterface
             $error = new StreamException('Failed to write to stream');
             $this->emit('error', $error);
 
-            // Reject all pending writes
             while (!empty($this->writeQueue)) {
                 $item = array_shift($this->writeQueue);
                 if (!$item['promise']->isCancelled()) {
@@ -236,7 +243,6 @@ class WritableStream implements WritableStreamInterface
             return;
         }
 
-        // Update buffer
         $wasAboveLimit = strlen($this->writeBuffer) >= $this->softLimit;
         $this->writeBuffer = substr($this->writeBuffer, $written);
         $isNowBelowLimit = strlen($this->writeBuffer) < $this->softLimit;
@@ -245,13 +251,13 @@ class WritableStream implements WritableStreamInterface
         $remaining = $written;
         while ($remaining > 0 && !empty($this->writeQueue)) {
             $item = &$this->writeQueue[0];
-            
+
             if ($item['promise']->isCancelled()) {
                 // Skip cancelled promises
                 array_shift($this->writeQueue);
                 continue;
             }
-            
+
             if ($remaining >= $item['bytes']) {
                 // This write is complete
                 $remaining -= $item['bytes'];
@@ -280,7 +286,7 @@ class WritableStream implements WritableStreamInterface
     {
         // Remove from queue and update write buffer
         $bytesToRemove = 0;
-        
+
         foreach ($this->writeQueue as $index => $item) {
             if ($item['promise'] === $promise) {
                 $bytesToRemove = $item['bytes'];
