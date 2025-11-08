@@ -85,7 +85,7 @@ class WritableStream implements WritableStreamInterface
         }
 
         $promise = new CancellablePromise();
-        
+
         $this->writeBuffer .= $data;
         $bytesToWrite = strlen($data);
 
@@ -136,7 +136,7 @@ class WritableStream implements WritableStreamInterface
         };
 
         if ($data !== null && $data !== '') {
-            $this->write($data)->then(function() use ($finish) {
+            $this->write($data)->then(function () use ($finish) {
                 $finish();
             })->catch(function ($error) use ($promise) {
                 $this->writable = false;
@@ -269,6 +269,11 @@ class WritableStream implements WritableStreamInterface
             $this->emit('drain');
         }
 
+        // IMPORTANT FIX: Emit drain when BOTH buffer and queue are empty
+        if ($this->writeBuffer === '' && empty($this->writeQueue)) {
+            $this->emit('drain');
+        }
+
         // Stop watching if buffer is empty
         if ($this->writeBuffer === '' && $this->watcherId !== null) {
             Loop::removeStreamWatcher($this->watcherId);
@@ -304,7 +309,8 @@ class WritableStream implements WritableStreamInterface
 
     private function waitForDrain(): CancellablePromiseInterface
     {
-        if ($this->writeBuffer === '') {
+        // Wait for BOTH buffer to be empty AND queue to be empty
+        if ($this->writeBuffer === '' && empty($this->writeQueue)) {
             return $this->createResolvedCancellable(null);
         }
 
@@ -313,15 +319,23 @@ class WritableStream implements WritableStreamInterface
 
         $drainHandler = null;
         $errorHandler = null;
+        $checkDrained = null;
 
-        $drainHandler = function () use ($promise, &$drainHandler, &$errorHandler, &$cancelled) {
+        $checkDrained = function () use ($promise, &$drainHandler, &$errorHandler, &$cancelled, &$checkDrained) {
             if ($cancelled) {
                 return;
             }
 
-            $this->off('drain', $drainHandler);
-            $this->off('error', $errorHandler);
-            $promise->resolve(null);
+            // Check if fully drained (buffer empty AND queue empty)
+            if ($this->writeBuffer === '' && empty($this->writeQueue)) {
+                $this->off('drain', $drainHandler);
+                $this->off('error', $errorHandler);
+                $promise->resolve(null);
+            }
+        };
+
+        $drainHandler = function () use ($checkDrained) {
+            $checkDrained();
         };
 
         $errorHandler = function ($error) use ($promise, &$drainHandler, &$errorHandler, &$cancelled) {
@@ -337,15 +351,13 @@ class WritableStream implements WritableStreamInterface
         $this->on('drain', $drainHandler);
         $this->on('error', $errorHandler);
 
-        // If buffer is already empty, resolve immediately
-        if ($this->writeBuffer === '') {
+        // Check immediately in case it's already drained
+        $checkDrained();
+
+        $promise->setCancelHandler(function () use (&$cancelled, &$drainHandler, &$errorHandler) {
+            $cancelled = true;
             $this->off('drain', $drainHandler);
             $this->off('error', $errorHandler);
-            $promise->resolve(null);
-        }
-
-        $promise->setCancelHandler(function () use (&$cancelled) {
-            $cancelled = true;
         });
 
         return $promise;
