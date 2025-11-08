@@ -9,12 +9,11 @@ use Hibla\EventLoop\Loop;
 */
 
 uses()->beforeEach(function () {
-    // Ensure clean state before each test
 })->in('Unit', 'Feature');
 
 uses()->afterEach(function () {
-    // Clean up after each test
     Loop::stop();
+    Loop::reset();
 })->in('Unit', 'Feature');
 
 /*

@@ -11,7 +11,7 @@ describe('Stream Piping', function () {
         $source = Stream::readableFile($sourceFile);
         $dest = Stream::writableFile($destFile);
         
-        $bytesTransferred = $source->pipe($dest)->await();
+        $bytesTransferred = $source->pipe($dest)->await(false);
         
         expect($bytesTransferred)->toBe(strlen($sourceContent));
         expect(file_get_contents($destFile))->toBe($sourceContent);
@@ -31,7 +31,7 @@ describe('Stream Piping', function () {
         $source = Stream::readableFile($sourceFile);
         $dest = Stream::writableFile($destFile);
         
-        $bytesTransferred = $source->pipe($dest)->await();
+        $bytesTransferred = $source->pipe($dest)->await(false);
         
         $memUsed = memory_get_usage() - $startMem;
         
@@ -50,12 +50,12 @@ describe('Stream Piping', function () {
         $source = Stream::readableFile($sourceFile);
         $dest = Stream::writableFile($destFile);
         
-        $source->pipe($dest, ['end' => false])->await();
+        $source->pipe($dest, ['end' => false])->await(false);
         
         expect($dest->isWritable())->toBeTrue();
         
-        $dest->write(' Second part')->await();
-        $dest->end()->await();
+        $dest->write(' Second part')->await(false);
+        $dest->end()->await(false);
         
         expect(file_get_contents($destFile))->toBe('First part Second part');
         

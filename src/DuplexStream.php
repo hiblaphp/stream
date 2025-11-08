@@ -106,7 +106,6 @@ class DuplexStream implements DuplexStreamInterface
 
     public function resume(): void
     {
-        // Only resume if writable side is still open
         if ($this->writable->isWritable()) {
             $this->readable->resume();
         }
@@ -117,7 +116,6 @@ class DuplexStream implements DuplexStreamInterface
         return $this->readable->isPaused();
     }
 
-    // Writable methods
     public function write(string $data): CancellablePromiseInterface
     {
         return $this->writable->write($data);
@@ -144,7 +142,6 @@ class DuplexStream implements DuplexStreamInterface
         return $this->writable->isEnding();
     }
 
-    // Common method
     public function close(): void
     {
         if ($this->closed) {
