@@ -35,17 +35,12 @@ class DuplexStream implements DuplexStreamInterface
         $this->readable = new ReadableStream($resource, $readChunkSize);
         $this->writable = new WritableStream($resource, $writeSoftLimit);
 
-        // Forward events from readable side
         $this->forwardEvents($this->readable, ['data', 'end', 'pause', 'resume']);
-
-        // Forward events from writable side
         $this->forwardEvents($this->writable, ['drain', 'finish']);
 
-        // Forward error events from both sides
         $this->readable->on('error', fn($error) => $this->emit('error', $error));
         $this->writable->on('error', fn($error) => $this->emit('error', $error));
 
-        // Handle close from either side
         $this->readable->on('close', function () {
             if (!$this->closed) {
                 $this->close();
@@ -68,7 +63,6 @@ class DuplexStream implements DuplexStreamInterface
         }
     }
 
-    // Readable methods
     public function read(?int $length = null): CancellablePromiseInterface
     {
         return $this->readable->read($length);

@@ -2,10 +2,10 @@
 
 namespace Hibla\Stream;
 
-use Hibla\EventLoop\Loop;
 use Hibla\Promise\CancellablePromise;
 use Hibla\Promise\Interfaces\CancellablePromiseInterface;
 use Hibla\Stream\Exceptions\StreamException;
+use Hibla\Stream\Handlers\WritableStreamHandler;
 use Hibla\Stream\Interfaces\WritableStreamInterface;
 use Hibla\Stream\Traits\EventEmitterTrait;
 
@@ -19,12 +19,9 @@ class WritableStream implements WritableStreamInterface
     private bool $writable = true;
     private bool $closed = false;
     private bool $ending = false;
-    private ?string $watcherId = null;
-    private string $writeBuffer = '';
     private int $softLimit;
 
-    /** @var array<array{resolve: callable, reject: callable, bytes: int, promise: CancellablePromiseInterface}> */
-    private array $writeQueue = [];
+    private WritableStreamHandler $handler;
 
     /**
      * @param resource $resource Stream resource
@@ -36,7 +33,6 @@ class WritableStream implements WritableStreamInterface
             throw new StreamException('Invalid resource provided');
         }
 
-        // Verify resource can be written to
         $meta = stream_get_meta_data($resource);
         $writableModes = ['w', 'a', 'x', 'c', '+'];
         $isWritable = false;
@@ -54,6 +50,12 @@ class WritableStream implements WritableStreamInterface
         $this->resource = $resource;
         $this->softLimit = $softLimit;
 
+        $this->setupNonBlocking($resource, $meta);
+        $this->initializeHandler();
+    }
+
+    private function setupNonBlocking($resource, array $meta): void
+    {
         $streamType = $meta['stream_type'] ?? '';
         $isWindows = DIRECTORY_SEPARATOR === '\\' || stripos(PHP_OS, 'WIN') === 0;
 
@@ -68,6 +70,16 @@ class WritableStream implements WritableStreamInterface
         if ($shouldSetNonBlocking) {
             @stream_set_blocking($resource, false);
         }
+    }
+
+    private function initializeHandler(): void
+    {
+        $this->handler = new WritableStreamHandler(
+            $this->resource,
+            $this->softLimit,
+            fn(string $event, ...$args) => $this->emit($event, ...$args),
+            fn() => $this->close()
+        );
     }
 
     public function write(string $data): CancellablePromiseInterface
@@ -86,23 +98,13 @@ class WritableStream implements WritableStreamInterface
 
         $promise = new CancellablePromise();
 
-        $this->writeBuffer .= $data;
-        $bytesToWrite = strlen($data);
-
-        $queueItem = [
-            'resolve' => fn($value) => $promise->resolve($value),
-            'reject' => fn($reason) => $promise->reject($reason),
-            'bytes' => $bytesToWrite,
-            'promise' => $promise,
-        ];
-
-        $this->writeQueue[] = $queueItem;
+        $this->handler->queueWrite($data, $promise);
 
         $promise->setCancelHandler(function () use ($promise) {
-            $this->cancelWrite($promise);
+            $this->handler->cancelWrite($promise);
         });
 
-        $this->startWriting();
+        $this->handler->startWatching($this->writable, $this->ending, $this->closed);
 
         return $promise;
     }
@@ -170,20 +172,8 @@ class WritableStream implements WritableStreamInterface
         $this->closed = true;
         $this->writable = false;
 
-        if ($this->watcherId !== null) {
-            Loop::removeStreamWatcher($this->watcherId);
-            $this->watcherId = null;
-        }
-
-        // Reject any pending writes
-        while (!empty($this->writeQueue)) {
-            $item = array_shift($this->writeQueue);
-            if (!$item['promise']->isCancelled()) {
-                $item['reject'](new StreamException('Stream closed'));
-            }
-        }
-
-        $this->writeBuffer = '';
+        $this->handler->stopWatching();
+        $this->handler->rejectAllPending(new StreamException('Stream closed'));
 
         if (is_resource($this->resource)) {
             @fclose($this->resource);
@@ -194,123 +184,9 @@ class WritableStream implements WritableStreamInterface
         $this->removeAllListeners();
     }
 
-    private function startWriting(): void
-    {
-        if ($this->watcherId !== null || $this->closed || $this->writeBuffer === '') {
-            return;
-        }
-
-        if (!$this->writable && !$this->ending) {
-            return;
-        }
-
-        $this->watcherId = Loop::addStreamWatcher(
-            $this->resource,
-            function () {
-                $this->handleWritable();
-            },
-            'write'
-        );
-    }
-
-    private function handleWritable(): void
-    {
-        // Allow writes while ending, but not if already closed or not writable and not ending
-        if ((!$this->writable && !$this->ending) || $this->writeBuffer === '') {
-            return;
-        }
-
-        $written = @fwrite($this->resource, $this->writeBuffer);
-
-        if ($written === false || $written === 0) {
-            $error = new StreamException('Failed to write to stream');
-            $this->emit('error', $error);
-
-            while (!empty($this->writeQueue)) {
-                $item = array_shift($this->writeQueue);
-                if (!$item['promise']->isCancelled()) {
-                    $item['reject']($error);
-                }
-            }
-
-            $this->close();
-            return;
-        }
-
-        $wasAboveLimit = strlen($this->writeBuffer) >= $this->softLimit;
-        $this->writeBuffer = substr($this->writeBuffer, $written);
-        $isNowBelowLimit = strlen($this->writeBuffer) < $this->softLimit;
-
-        // Resolve completed writes
-        $remaining = $written;
-        while ($remaining > 0 && !empty($this->writeQueue)) {
-            $item = &$this->writeQueue[0];
-
-            if ($item['promise']->isCancelled()) {
-                // Skip cancelled promises
-                array_shift($this->writeQueue);
-                continue;
-            }
-
-            if ($remaining >= $item['bytes']) {
-                // This write is complete
-                $remaining -= $item['bytes'];
-                $completed = array_shift($this->writeQueue);
-                $completed['resolve']($completed['bytes']);
-            } else {
-                // Partial write
-                $item['bytes'] -= $remaining;
-                $remaining = 0;
-            }
-        }
-
-        // Emit drain if buffer went from above to below limit
-        if ($wasAboveLimit && $isNowBelowLimit) {
-            $this->emit('drain');
-        }
-
-        // IMPORTANT FIX: Emit drain when BOTH buffer and queue are empty
-        if ($this->writeBuffer === '' && empty($this->writeQueue)) {
-            $this->emit('drain');
-        }
-
-        // Stop watching if buffer is empty
-        if ($this->writeBuffer === '' && $this->watcherId !== null) {
-            Loop::removeStreamWatcher($this->watcherId);
-            $this->watcherId = null;
-        }
-    }
-
-    private function cancelWrite(CancellablePromiseInterface $promise): void
-    {
-        // Remove from queue and update write buffer
-        $bytesToRemove = 0;
-
-        foreach ($this->writeQueue as $index => $item) {
-            if ($item['promise'] === $promise) {
-                $bytesToRemove = $item['bytes'];
-                unset($this->writeQueue[$index]);
-                $this->writeQueue = array_values($this->writeQueue); // Re-index
-                break;
-            }
-        }
-
-        // Remove cancelled bytes from buffer (from the end)
-        if ($bytesToRemove > 0 && strlen($this->writeBuffer) >= $bytesToRemove) {
-            $this->writeBuffer = substr($this->writeBuffer, 0, -$bytesToRemove);
-        }
-
-        // Stop watching if buffer is empty
-        if ($this->writeBuffer === '' && $this->watcherId !== null) {
-            Loop::removeStreamWatcher($this->watcherId);
-            $this->watcherId = null;
-        }
-    }
-
     private function waitForDrain(): CancellablePromiseInterface
     {
-        // Wait for BOTH buffer to be empty AND queue to be empty
-        if ($this->writeBuffer === '' && empty($this->writeQueue)) {
+        if ($this->handler->isFullyDrained()) {
             return $this->createResolvedCancellable(null);
         }
 
@@ -326,8 +202,7 @@ class WritableStream implements WritableStreamInterface
                 return;
             }
 
-            // Check if fully drained (buffer empty AND queue empty)
-            if ($this->writeBuffer === '' && empty($this->writeQueue)) {
+            if ($this->handler->isFullyDrained()) {
                 $this->off('drain', $drainHandler);
                 $this->off('error', $errorHandler);
                 $promise->resolve(null);
@@ -351,7 +226,6 @@ class WritableStream implements WritableStreamInterface
         $this->on('drain', $drainHandler);
         $this->on('error', $errorHandler);
 
-        // Check immediately in case it's already drained
         $checkDrained();
 
         $promise->setCancelHandler(function () use (&$cancelled, &$drainHandler, &$errorHandler) {
