@@ -8,6 +8,7 @@ use Hibla\Stream\Exceptions\StreamException;
 use Hibla\Stream\Interfaces\DuplexStreamInterface;
 use Hibla\Stream\Interfaces\WritableStreamInterface;
 use Hibla\Stream\Traits\EventEmitterTrait;
+use Hibla\Stream\Traits\PromiseHelperTrait;
 
 /**
  * ThroughStream - A transform stream that processes data through a callback
@@ -15,6 +16,7 @@ use Hibla\Stream\Traits\EventEmitterTrait;
 class ThroughStream implements DuplexStreamInterface
 {
     use EventEmitterTrait;
+    use PromiseHelperTrait;
 
     private bool $readable = true;
     private bool $writable = true;
@@ -36,21 +38,21 @@ class ThroughStream implements DuplexStreamInterface
 
     public function read(?int $length = null): CancellablePromiseInterface
     {
-        return $this->createRejectedCancellable(
+        return $this->createRejectedPromise(
             new StreamException('ThroughStream does not support read() method. Use event listeners.')
         );
     }
 
     public function readLine(?int $maxLength = null): CancellablePromiseInterface
     {
-        return $this->createRejectedCancellable(
+        return $this->createRejectedPromise(
             new StreamException('ThroughStream does not support readLine() method. Use event listeners.')
         );
     }
 
     public function readAll(int $maxLength = 1048576): CancellablePromiseInterface
     {
-        return $this->createRejectedCancellable(
+        return $this->createRejectedPromise(
             new StreamException('ThroughStream does not support readAll() method. Use event listeners.')
         );
     }
@@ -58,57 +60,72 @@ class ThroughStream implements DuplexStreamInterface
     public function pipe(WritableStreamInterface $destination, array $options = []): CancellablePromiseInterface
     {
         if (!$this->isReadable()) {
-            return $this->createRejectedCancellable(new StreamException('Stream is not readable'));
+            return $this->createRejectedPromise(new StreamException('Stream is not readable'));
         }
 
         if (!$destination->isWritable()) {
             $this->pause();
-            return $this->createRejectedCancellable(new StreamException('Destination is not writable'));
+            return $this->createRejectedPromise(new StreamException('Destination is not writable'));
         }
 
         $endDestination = $options['end'] ?? true;
         $totalBytes = 0;
+        $cancelled = false;
 
-        $promise = new CancellablePromise(function ($resolve, $reject) use ($destination, $endDestination, &$totalBytes) {
-            $cancelled = false;
+        $promise = new CancellablePromise();
 
-            $dataHandler = function ($data) use ($destination, &$totalBytes, &$cancelled) {
-                if ($cancelled) {
-                    return;
-                }
+        $dataHandler = function ($data) use ($destination, &$totalBytes, &$cancelled) {
+            if ($cancelled) {
+                return;
+            }
 
-                $destination->write($data)->then(function ($bytes) use (&$totalBytes) {
-                    $totalBytes += $bytes;
+            $destination->write($data)->then(function ($bytes) use (&$totalBytes) {
+                $totalBytes += $bytes;
+            });
+        };
+
+        $endHandler = function () use ($promise, $destination, $endDestination, &$totalBytes, &$cancelled, &$dataHandler, &$endHandler, &$errorHandler) {
+            if ($cancelled) {
+                return;
+            }
+
+            $this->off('data', $dataHandler);
+            $this->off('end', $endHandler);
+            $this->off('error', $errorHandler);
+
+            if ($endDestination) {
+                $destination->end()->then(function () use ($promise, &$totalBytes) {
+                    $promise->resolve($totalBytes);
+                })->catch(function () use ($promise, &$totalBytes) {
+                    $promise->resolve($totalBytes);
                 });
-            };
+            } else {
+                $promise->resolve($totalBytes);
+            }
+        };
 
-            $endHandler = function () use ($destination, $endDestination, $resolve, &$totalBytes, &$cancelled) {
-                if ($cancelled) {
-                    return;
-                }
+        $errorHandler = function ($error) use ($promise, &$cancelled, &$dataHandler, &$endHandler, &$errorHandler) {
+            if ($cancelled) {
+                return;
+            }
 
-                if ($endDestination) {
-                    $destination->end()->then(function () use ($resolve, &$totalBytes) {
-                        $resolve($totalBytes);
-                    });
-                } else {
-                    $resolve($totalBytes);
-                }
-            };
+            $this->off('data', $dataHandler);
+            $this->off('end', $endHandler);
+            $this->off('error', $errorHandler);
+            
+            $promise->reject($error);
+        };
 
-            $errorHandler = function ($error) use ($reject, &$cancelled) {
-                if (!$cancelled) {
-                    $reject($error);
-                }
-            };
+        $this->on('data', $dataHandler);
+        $this->on('end', $endHandler);
+        $this->on('error', $errorHandler);
 
-            $this->on('data', $dataHandler);
-            $this->on('end', $endHandler);
-            $this->on('error', $errorHandler);
-        });
-
-        $promise->setCancelHandler(function () {
+        $promise->setCancelHandler(function () use (&$cancelled, &$dataHandler, &$endHandler, &$errorHandler) {
+            $cancelled = true;
             $this->pause();
+            $this->off('data', $dataHandler);
+            $this->off('end', $endHandler);
+            $this->off('error', $errorHandler);
         });
 
         return $promise;
@@ -117,29 +134,29 @@ class ThroughStream implements DuplexStreamInterface
     public function write(string $data): CancellablePromiseInterface
     {
         if (!$this->isWritable()) {
-            return $this->createRejectedCancellable(new StreamException('Stream is not writable'));
+            return $this->createRejectedPromise(new StreamException('Stream is not writable'));
         }
 
-        $promise = new CancellablePromise(function ($resolve, $reject) use ($data) {
-            try {
-                if ($this->transformer !== null) {
-                    $data = ($this->transformer)($data);
-                }
+        $promise = new CancellablePromise();
 
-                $this->emit('data', $data);
-
-                if ($this->paused) {
-                    $this->draining = true;
-                    $resolve(0); 
-                } else {
-                    $resolve(strlen($data));
-                }
-            } catch (\Throwable $e) {
-                $this->emit('error', $e);
-                $this->close();
-                $reject($e);
+        try {
+            if ($this->transformer !== null) {
+                $data = ($this->transformer)($data);
             }
-        });
+
+            $this->emit('data', $data);
+
+            if ($this->paused) {
+                $this->draining = true;
+                $promise->resolve(0);
+            } else {
+                $promise->resolve(strlen($data));
+            }
+        } catch (\Throwable $e) {
+            $this->emit('error', $e);
+            $this->close();
+            $promise->reject($e);
+        }
 
         return $promise;
     }
@@ -152,36 +169,35 @@ class ThroughStream implements DuplexStreamInterface
     public function end(?string $data = null): CancellablePromiseInterface
     {
         if (!$this->isWritable() || $this->ending) {
-            return $this->createResolvedCancellable(null);
+            return $this->createResolvedPromise(null);
         }
 
         $this->ending = true;
+        $promise = new CancellablePromise();
 
-        $promise = new CancellablePromise(function ($resolve, $reject) use ($data) {
-            try {
-                if ($data !== null && $data !== '') {
-                    $transformedData = $data;
-                    if ($this->transformer !== null) {
-                        $transformedData = ($this->transformer)($data);
-                    }
-
-                    $this->emit('data', $transformedData);
+        try {
+            if ($data !== null && $data !== '') {
+                $transformedData = $data;
+                if ($this->transformer !== null) {
+                    $transformedData = ($this->transformer)($data);
                 }
 
-                $this->writable = false;
-                $this->readable = false;
-                $this->emit('end');
-                $this->emit('finish');
-                $this->close();
-                $resolve(null);
-            } catch (\Throwable $e) {
-                $this->writable = false;
-                $this->readable = false;
-                $this->emit('error', $e);
-                $this->close();
-                $reject($e);
+                $this->emit('data', $transformedData);
             }
-        });
+
+            $this->writable = false;
+            $this->readable = false;
+            $this->emit('end');
+            $this->emit('finish');
+            $this->close();
+            $promise->resolve(null);
+        } catch (\Throwable $e) {
+            $this->writable = false;
+            $this->readable = false;
+            $this->emit('error', $e);
+            $this->close();
+            $promise->reject($e);
+        }
 
         return $promise;
     }
@@ -250,23 +266,5 @@ class ThroughStream implements DuplexStreamInterface
 
         $this->emit('close');
         $this->removeAllListeners();
-    }
-
-    private function createResolvedCancellable(mixed $value): CancellablePromiseInterface
-    {
-        $promise = new CancellablePromise(function ($resolve) use ($value) {
-            $resolve($value);
-        });
-
-        return $promise;
-    }
-
-    private function createRejectedCancellable(\Throwable $reason): CancellablePromiseInterface
-    {
-        $promise = new CancellablePromise(function ($resolve, $reject) use ($reason) {
-            $reject($reason);
-        });
-
-        return $promise;
     }
 }

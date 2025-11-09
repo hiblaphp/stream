@@ -8,10 +8,12 @@ use Hibla\Stream\Exceptions\StreamException;
 use Hibla\Stream\Handlers\WritableStreamHandler;
 use Hibla\Stream\Interfaces\WritableStreamInterface;
 use Hibla\Stream\Traits\EventEmitterTrait;
+use Hibla\Stream\Traits\PromiseHelperTrait;
 
 class WritableStream implements WritableStreamInterface
 {
     use EventEmitterTrait;
+    use PromiseHelperTrait;
 
     /** @var resource|null */
     private $resource;
@@ -85,15 +87,15 @@ class WritableStream implements WritableStreamInterface
     public function write(string $data): CancellablePromiseInterface
     {
         if (!$this->writable && !$this->ending) {
-            return $this->createRejectedCancellable(new StreamException('Stream is not writable'));
+            return $this->createRejectedPromise(new StreamException('Stream is not writable'));
         }
 
         if ($this->closed) {
-            return $this->createRejectedCancellable(new StreamException('Stream is not writable'));
+            return $this->createRejectedPromise(new StreamException('Stream is not writable'));
         }
 
         if ($data === '') {
-            return $this->createResolvedCancellable(0);
+            return $this->createResolvedPromise(0);
         }
 
         $promise = new CancellablePromise();
@@ -117,7 +119,7 @@ class WritableStream implements WritableStreamInterface
     public function end(?string $data = null): CancellablePromiseInterface
     {
         if ($this->ending || $this->closed) {
-            return $this->createResolvedCancellable(null);
+            return $this->createResolvedPromise(null);
         }
 
         $this->ending = true;
@@ -187,7 +189,7 @@ class WritableStream implements WritableStreamInterface
     private function waitForDrain(): CancellablePromiseInterface
     {
         if ($this->handler->isFullyDrained()) {
-            return $this->createResolvedCancellable(null);
+            return $this->createResolvedPromise(null);
         }
 
         $promise = new CancellablePromise();
@@ -234,20 +236,6 @@ class WritableStream implements WritableStreamInterface
             $this->off('error', $errorHandler);
         });
 
-        return $promise;
-    }
-
-    private function createResolvedCancellable(mixed $value): CancellablePromiseInterface
-    {
-        $promise = new CancellablePromise();
-        $promise->resolve($value);
-        return $promise;
-    }
-
-    private function createRejectedCancellable(\Throwable $reason): CancellablePromiseInterface
-    {
-        $promise = new CancellablePromise();
-        $promise->reject($reason);
         return $promise;
     }
 

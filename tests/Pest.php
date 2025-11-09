@@ -76,3 +76,42 @@ function waitForLoop(int $milliseconds = 10): void
     usleep($milliseconds * 1000);
     Loop::run();
 }
+
+function asyncTest(callable $test, int $timeoutMs = 5000): void
+{
+    $completed = false;
+    
+    Loop::addTimer($timeoutMs / 1000, function () use (&$completed) {
+        if (!$completed) {
+            throw new \RuntimeException('Test timeout');
+        }
+    });
+    
+    Loop::nextTick(function () use ($test, &$completed) {
+        try {
+            $result = $test();
+            if ($result instanceof PromiseInterface) {
+                $result->then(
+                    function () use (&$completed) {
+                        $completed = true;
+                        Loop::stop();
+                    },
+                    function ($e) use (&$completed) {
+                        $completed = true;
+                        Loop::stop();
+                        throw $e;
+                    }
+                );
+            } else {
+                $completed = true;
+                Loop::stop();
+            }
+        } catch (\Throwable $e) {
+            $completed = true;
+            Loop::stop();
+            throw $e;
+        }
+    });
+    
+    Loop::run();
+}

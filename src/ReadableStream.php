@@ -12,10 +12,12 @@ use Hibla\Stream\Handlers\ReadLineHandler;
 use Hibla\Stream\Interfaces\ReadableStreamInterface;
 use Hibla\Stream\Interfaces\WritableStreamInterface;
 use Hibla\Stream\Traits\EventEmitterTrait;
+use Hibla\Stream\Traits\PromiseHelperTrait;
 
 class ReadableStream implements ReadableStreamInterface
 {
     use EventEmitterTrait;
+    use PromiseHelperTrait;
 
     /** @var resource|null */
     private $resource;
@@ -115,11 +117,11 @@ class ReadableStream implements ReadableStreamInterface
     public function read(?int $length = null): CancellablePromiseInterface
     {
         if (!$this->isReadable()) {
-            return $this->createRejectedCancellable(new StreamException('Stream is not readable'));
+            return $this->createRejectedPromise(new StreamException('Stream is not readable'));
         }
 
         if ($this->eof) {
-            return $this->createResolvedCancellable(null);
+            return $this->createResolvedPromise(null);
         }
 
         $promise = new CancellablePromise();
@@ -140,11 +142,11 @@ class ReadableStream implements ReadableStreamInterface
     public function readLine(?int $maxLength = null): CancellablePromiseInterface
     {
         if (!$this->isReadable()) {
-            return $this->createRejectedCancellable(new StreamException('Stream is not readable'));
+            return $this->createRejectedPromise(new StreamException('Stream is not readable'));
         }
 
         if ($this->eof && empty($this->handler->getBuffer())) {
-            return $this->createResolvedCancellable(null);
+            return $this->createResolvedPromise(null);
         }
 
         $maxLen = $maxLength ?? $this->chunkSize;
@@ -154,7 +156,7 @@ class ReadableStream implements ReadableStreamInterface
         $line = $this->lineHandler->findLineInBuffer($buffer, $maxLen);
         if ($line !== null) {
             $this->handler->setBuffer($buffer);
-            return $this->createResolvedCancellable($line);
+            return $this->createResolvedPromise($line);
         }
 
         // Need to read more data
@@ -165,7 +167,7 @@ class ReadableStream implements ReadableStreamInterface
     public function readAll(int $maxLength = 1048576): CancellablePromiseInterface
     {
         if (!$this->isReadable()) {
-            return $this->createRejectedCancellable(new StreamException('Stream is not readable'));
+            return $this->createRejectedPromise(new StreamException('Stream is not readable'));
         }
 
         $buffer = $this->handler->getBuffer();
@@ -177,11 +179,11 @@ class ReadableStream implements ReadableStreamInterface
     public function pipe(WritableStreamInterface $destination, array $options = []): CancellablePromiseInterface
     {
         if (!$this->isReadable()) {
-            return $this->createRejectedCancellable(new StreamException('Stream is not readable'));
+            return $this->createRejectedPromise(new StreamException('Stream is not readable'));
         }
 
         if (!$destination->isWritable()) {
-            return $this->createRejectedCancellable(new StreamException('Destination is not writable'));
+            return $this->createRejectedPromise(new StreamException('Destination is not writable'));
         }
 
         return $this->pipeHandler->pipe($destination, $options);
@@ -243,20 +245,6 @@ class ReadableStream implements ReadableStreamInterface
 
         $this->emit('close');
         $this->removeAllListeners();
-    }
-
-    private function createResolvedCancellable(mixed $value): CancellablePromiseInterface
-    {
-        $promise = new CancellablePromise();
-        $promise->resolve($value);
-        return $promise;
-    }
-
-    private function createRejectedCancellable(\Throwable $reason): CancellablePromiseInterface
-    {
-        $promise = new CancellablePromise();
-        $promise->reject($reason);
-        return $promise;
     }
 
     public function __destruct()
