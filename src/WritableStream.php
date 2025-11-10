@@ -12,10 +12,6 @@ use Hibla\Stream\Interfaces\WritableStreamInterface;
 use Hibla\Stream\Traits\EventEmitterTrait;
 use Hibla\Stream\Traits\PromiseHelperTrait;
 
-/**
- * An implementation of a non-blocking writable stream for asynchronous I/O operations.
- * It encapsulates a resource handle, manages a write buffer, and handles backpressure.
- */
 class WritableStream implements WritableStreamInterface
 {
     use EventEmitterTrait;
