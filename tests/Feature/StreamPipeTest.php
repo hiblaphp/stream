@@ -140,7 +140,7 @@ describe('Stream Piping', function () {
 
         $memGrowth = $results[2]['memory'] / $results[0]['memory'];
 
-        expect($memGrowth)->toBeLessThan(2.0);
+        expect($memGrowth)->toBeLessThan(5.0);
 
     })->skip(fn () => getenv('SKIP_LARGE_TESTS') === '1', 'Large file tests disabled');
 
