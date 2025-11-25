@@ -35,14 +35,8 @@ jobs:
       - name: Install Dependencies
         run: composer install --no-interaction --prefer-dist --optimize-autoloader
 
-      - name: Run Unit Tests
-        run: composer test-unit
-
-      - name: Run Feature Tests
-        run: composer test-feature
-
-      - name: Run Integration Tests
-        run: composer test-integration
+      - name: Run tests
+        run: composer test
         
       - name: Run Static Analysis
         run: ./vendor/bin/phpstan analyse
