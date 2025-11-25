@@ -608,7 +608,7 @@ describe('DuplexResourceStream', function () {
         $destResource = fopen($destFile, 'w');
 
         $readStream = new DuplexResourceStream($sourceResource);
-        $writeStream = new \Hibla\Stream\WritableResourceStream($destResource);
+        $writeStream = new Hibla\Stream\WritableResourceStream($destResource);
 
         $finishEmitted = false;
 

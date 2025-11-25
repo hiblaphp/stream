@@ -3,7 +3,6 @@
 declare(strict_types=1);
 
 use Hibla\EventLoop\Loop;
-use Hibla\Stream\Exceptions\StreamException;
 use Hibla\Stream\ThroughStream;
 use Hibla\Stream\WritableResourceStream;
 
@@ -23,7 +22,7 @@ describe('ThroughStream', function () {
     });
 
     test('can be created with transformer', function () {
-        $stream = new ThroughStream(fn($data) => strtoupper($data));
+        $stream = new ThroughStream(fn ($data) => strtoupper($data));
 
         expect($stream->isReadable())->toBeTrue();
         expect($stream->isWritable())->toBeTrue();
@@ -65,7 +64,7 @@ describe('ThroughStream', function () {
     });
 
     test('transforms data when transformer is provided', function () {
-        $stream = new ThroughStream(fn($data) => strtoupper($data));
+        $stream = new ThroughStream(fn ($data) => strtoupper($data));
 
         $received = null;
         $stream->on('data', function ($data) use (&$received) {
@@ -80,7 +79,7 @@ describe('ThroughStream', function () {
     });
 
     test('transformer can modify data length', function () {
-        $stream = new ThroughStream(fn($data) => str_repeat($data, 2));
+        $stream = new ThroughStream(fn ($data) => str_repeat($data, 2));
 
         $received = null;
         $stream->on('data', function ($data) use (&$received) {
@@ -427,9 +426,9 @@ describe('ThroughStream', function () {
     test('removes all listeners on close', function () {
         $stream = new ThroughStream();
 
-        $stream->on('data', fn() => null);
-        $stream->on('end', fn() => null);
-        $stream->on('error', fn() => null);
+        $stream->on('data', fn () => null);
+        $stream->on('end', fn () => null);
+        $stream->on('error', fn () => null);
 
         $stream->close();
 
@@ -521,7 +520,7 @@ describe('ThroughStream', function () {
     });
 
     test('transformer can return empty string', function () {
-        $stream = new ThroughStream(fn($data) => '');
+        $stream = new ThroughStream(fn ($data) => '');
 
         $received = null;
         $stream->on('data', function ($data) use (&$received) {
@@ -536,7 +535,7 @@ describe('ThroughStream', function () {
     });
 
     test('end with transformer applies transformation', function () {
-        $stream = new ThroughStream(fn($data) => strtoupper($data));
+        $stream = new ThroughStream(fn ($data) => strtoupper($data));
 
         $chunks = [];
         $stream->on('data', function ($data) use (&$chunks) {

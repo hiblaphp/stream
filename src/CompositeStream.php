@@ -94,6 +94,7 @@ class CompositeStream extends EventEmitter implements DuplexStreamInterface
     {
         if ($this->closed) {
             $this->emit('error', [new \RuntimeException('Stream is closed')]);
+
             return false;
         }
 

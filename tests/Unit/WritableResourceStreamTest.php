@@ -236,7 +236,7 @@ describe('WritableResourceStream', function () {
         $largeData = str_repeat('X', 1024 * 1024); // 1MB
 
         $stream->write($largeData);
-        
+
         Loop::run();
         $stream->close();
 
@@ -298,7 +298,7 @@ describe('WritableResourceStream', function () {
         $sourceResource = fopen($sourceFile, 'r');
         $destResource = fopen($destFile, 'w');
 
-        $readStream = new \Hibla\Stream\ReadableResourceStream($sourceResource);
+        $readStream = new Hibla\Stream\ReadableResourceStream($sourceResource);
         $writeStream = new WritableResourceStream($destResource);
 
         $pipeEmitted = false;

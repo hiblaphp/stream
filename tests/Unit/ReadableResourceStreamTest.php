@@ -115,7 +115,7 @@ describe('ReadableResourceStream', function () {
             $dataCount++;
             $allData .= $data;
 
-            if ($dataCount === 2 && !$paused) {
+            if ($dataCount === 2 && ! $paused) {
                 $stream->pause();
                 $paused = true;
                 $pauseTriggered = true;
@@ -260,7 +260,7 @@ describe('ReadableResourceStream', function () {
 
         // Don't close resource directly, let stream handle it
         $stream->resume();
-        
+
         // Manually trigger error by closing stream
         $stream->close();
 
@@ -278,7 +278,7 @@ describe('ReadableResourceStream', function () {
         $destResource = fopen($destFile, 'w');
 
         $readStream = new ReadableResourceStream($sourceResource);
-        $writeStream = new \Hibla\Stream\WritableResourceStream($destResource);
+        $writeStream = new Hibla\Stream\WritableResourceStream($destResource);
 
         $endEmitted = false;
 
@@ -307,7 +307,7 @@ describe('ReadableResourceStream', function () {
         $destResource = fopen($destFile, 'w');
 
         $readStream = new ReadableResourceStream($sourceResource, 8192);
-        $writeStream = new \Hibla\Stream\WritableResourceStream($destResource, 1024);
+        $writeStream = new Hibla\Stream\WritableResourceStream($destResource, 1024);
 
         $pauseEmitted = false;
         $drainEmitted = false;
@@ -345,7 +345,7 @@ describe('ReadableResourceStream', function () {
         $destResource = fopen($destFile, 'w');
 
         $readStream = new ReadableResourceStream($sourceResource);
-        $writeStream = new \Hibla\Stream\WritableResourceStream($destResource);
+        $writeStream = new Hibla\Stream\WritableResourceStream($destResource);
 
         $readStream->on('end', function () {
             Loop::stop();

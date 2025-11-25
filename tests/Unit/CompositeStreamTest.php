@@ -379,7 +379,7 @@ describe('CompositeStream', function () {
         [$socket1, $socket2] = createSocketPair();
 
         $readable = new ReadableResourceStream($socket1);
-        $through = new ThroughStream(fn($data) => strtoupper($data));
+        $through = new ThroughStream(fn ($data) => strtoupper($data));
 
         $composite = new CompositeStream($readable, $through);
 

@@ -129,7 +129,7 @@ class WritableResourceStream extends EventEmitter implements WritableStreamInter
     {
         return $this->writable && ! $this->closed;
     }
- 
+
     public function isEnding(): bool
     {
         return $this->ending;

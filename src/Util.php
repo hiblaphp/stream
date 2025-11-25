@@ -27,6 +27,7 @@ final class Util
         // destination not writable => just pause() source
         if (! $dest->isWritable()) {
             $source->pause();
+
             return $dest;
         }
 

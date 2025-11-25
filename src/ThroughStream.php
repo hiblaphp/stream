@@ -80,6 +80,7 @@ class ThroughStream extends EventEmitter implements DuplexStreamInterface
     {
         if (! $this->isWritable()) {
             $this->emit('error', [new \RuntimeException('Stream is not writable')]);
+
             return false;
         }
 
@@ -91,10 +92,11 @@ class ThroughStream extends EventEmitter implements DuplexStreamInterface
 
             $this->emit('data', [$transformedData]);
 
-            return !$this->paused;
+            return ! $this->paused;
         } catch (\Throwable $e) {
             $this->emit('error', [$e]);
             $this->close();
+
             return false;
         }
     }

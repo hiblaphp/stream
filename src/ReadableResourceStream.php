@@ -32,7 +32,7 @@ class ReadableResourceStream extends EventEmitter implements ReadableStreamInter
      */
     public function __construct($resource, int $chunkSize = 65536)
     {
-        if (! is_resource($resource)) {
+        if (! \is_resource($resource)) {
             throw new StreamException('Invalid resource provided');
         }
 
@@ -138,7 +138,8 @@ class ReadableResourceStream extends EventEmitter implements ReadableStreamInter
         }
 
         $meta = stream_get_meta_data($this->resource);
-        if (isset($meta['seekable']) && ! $meta['seekable']) {
+        // PHPStan knows 'seekable' always exists in metadata
+        if ($meta['seekable'] === false) {
             return false;
         }
 
@@ -166,7 +167,7 @@ class ReadableResourceStream extends EventEmitter implements ReadableStreamInter
             throw new StreamException('Cannot tell position on a closed stream');
         }
 
-        if ($this->resource === null || ! is_resource($this->resource)) {
+        if ($this->resource === null || ! \is_resource($this->resource)) {
             throw new StreamException('Invalid stream resource');
         }
 
@@ -202,7 +203,8 @@ class ReadableResourceStream extends EventEmitter implements ReadableStreamInter
      */
     private function hasListeners(string $event): bool
     {
-        return isset($this->listeners[$event]) && count($this->listeners[$event]) > 0;
+        $listeners = $this->listeners($event);
+        return \count($listeners) > 0;
     }
 
     /**
