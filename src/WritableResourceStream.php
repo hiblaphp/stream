@@ -4,15 +4,13 @@ declare(strict_types=1);
 
 namespace Hibla\Stream;
 
-use Evenement\EventEmitterTrait;
+use Evenement\EventEmitter;
 use Hibla\Stream\Exceptions\StreamException;
 use Hibla\Stream\Handlers\WritableStreamHandler;
 use Hibla\Stream\Interfaces\WritableStreamInterface;
 
-class WritableResourceStream implements WritableStreamInterface
+class WritableResourceStream extends EventEmitter implements WritableStreamInterface
 {
-    use EventEmitterTrait;
-
     /** @var resource|null The underlying stream resource. */
     private $resource;
 
@@ -32,7 +30,7 @@ class WritableResourceStream implements WritableStreamInterface
      */
     public function __construct($resource, int $softLimit = 65536)
     {
-        if (! is_resource($resource)) {
+        if (! \is_resource($resource)) {
             throw new StreamException('Invalid resource provided');
         }
 
@@ -131,10 +129,7 @@ class WritableResourceStream implements WritableStreamInterface
     {
         return $this->writable && ! $this->closed;
     }
-
-    /**
-     * @inheritdoc
-     */
+ 
     public function isEnding(): bool
     {
         return $this->ending;
@@ -156,7 +151,7 @@ class WritableResourceStream implements WritableStreamInterface
         $this->handler->stopWatching();
         $this->handler->clearBuffer();
 
-        if (is_resource($this->resource)) {
+        if (\is_resource($this->resource)) {
             @fclose($this->resource);
             $this->resource = null;
         }
@@ -176,9 +171,9 @@ class WritableResourceStream implements WritableStreamInterface
 
         $shouldSetNonBlocking = false;
 
-        if (in_array($streamType, ['tcp_socket', 'udp_socket', 'unix_socket', 'ssl_socket', 'TCP/IP', 'tcp_socket/ssl'], true)) {
+        if (\in_array($streamType, ['tcp_socket', 'udp_socket', 'unix_socket', 'ssl_socket', 'TCP/IP', 'tcp_socket/ssl'], true)) {
             $shouldSetNonBlocking = true;
-        } elseif (! $isWindows && in_array($streamType, ['STDIO', 'PLAINFILE', 'TEMP', 'MEMORY'], true)) {
+        } elseif (! $isWindows && \in_array($streamType, ['STDIO', 'PLAINFILE', 'TEMP', 'MEMORY'], true)) {
             $shouldSetNonBlocking = true;
         }
 

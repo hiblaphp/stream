@@ -4,16 +4,14 @@ declare(strict_types=1);
 
 namespace Hibla\Stream;
 
-use Evenement\EventEmitterTrait;
+use Evenement\EventEmitter;
 use Hibla\Stream\Exceptions\StreamException;
 use Hibla\Stream\Handlers\ReadableStreamHandler;
 use Hibla\Stream\Interfaces\ReadableStreamInterface;
 use Hibla\Stream\Interfaces\WritableStreamInterface;
 
-class ReadableResourceStream implements ReadableStreamInterface
+class ReadableResourceStream extends EventEmitter implements ReadableStreamInterface
 {
-    use EventEmitterTrait;
-
     /** @var resource|null The underlying stream resource. */
     private $resource;
 
@@ -71,55 +69,7 @@ class ReadableResourceStream implements ReadableStreamInterface
      */
     public function pipe(WritableStreamInterface $destination, array $options = []): WritableStreamInterface
     {
-        // source not readable => NO-OP
-        if (! $this->isReadable()) {
-            return $destination;
-        }
-
-        // destination not writable => just pause() source
-        if (! $destination->isWritable()) {
-            $this->pause();
-
-            return $destination;
-        }
-
-        $destination->emit('pipe', [$this]);
-
-        // forward all source data events as $destination->write()
-        $this->on('data', $dataer = function (string $data) use ($destination): void {
-            $feedMore = $destination->write($data);
-            if (false === $feedMore) {
-                $this->pause();
-            }
-        });
-
-        $destination->on('close', function () use ($dataer): void {
-            $this->removeListener('data', $dataer);
-            $this->pause();
-        });
-
-        // forward destination drain as $this->resume()
-        $destination->on('drain', $drainer = function (): void {
-            $this->resume();
-        });
-
-        $this->on('close', function () use ($destination, $drainer): void {
-            $destination->removeListener('drain', $drainer);
-        });
-
-        // forward end event from source as $destination->end()
-        $end = $options['end'] ?? true;
-        if ($end) {
-            $this->on('end', $ender = function () use ($destination): void {
-                $destination->end();
-            });
-
-            $destination->on('close', function () use ($ender): void {
-                $this->removeListener('end', $ender);
-            });
-        }
-
-        return $destination;
+        return Util::pipe($this, $destination, $options);
     }
 
     /**
@@ -183,7 +133,7 @@ class ReadableResourceStream implements ReadableStreamInterface
             throw new StreamException('Cannot seek on a closed stream');
         }
 
-        if ($this->resource === null || ! is_resource($this->resource)) {
+        if ($this->resource === null || ! \is_resource($this->resource)) {
             throw new StreamException('Invalid stream resource');
         }
 
@@ -238,7 +188,7 @@ class ReadableResourceStream implements ReadableStreamInterface
 
         $this->handler->rejectAllPending(new StreamException('Stream closed'));
 
-        if ($this->resource !== null && is_resource($this->resource)) {
+        if ($this->resource !== null && \is_resource($this->resource)) {
             @fclose($this->resource);
             $this->resource = null;
         }
@@ -266,9 +216,9 @@ class ReadableResourceStream implements ReadableStreamInterface
 
         $shouldSetNonBlocking = false;
 
-        if (in_array($streamType, ['tcp_socket', 'udp_socket', 'unix_socket', 'ssl_socket', 'TCP/IP', 'tcp_socket/ssl'], true)) {
+        if (\in_array($streamType, ['tcp_socket', 'udp_socket', 'unix_socket', 'ssl_socket', 'TCP/IP', 'tcp_socket/ssl'], true)) {
             $shouldSetNonBlocking = true;
-        } elseif (! $isWindows && in_array($streamType, ['STDIO', 'PLAINFILE', 'TEMP', 'MEMORY'], true)) {
+        } elseif (! $isWindows && \in_array($streamType, ['STDIO', 'PLAINFILE', 'TEMP', 'MEMORY'], true)) {
             $shouldSetNonBlocking = true;
         }
 
@@ -297,9 +247,7 @@ class ReadableResourceStream implements ReadableStreamInterface
                 }
             },
             fn () => $this->close(),
-            function () use ($resource) {
-                return is_resource($resource) && feof($resource);
-            },
+            fn () => \is_resource($resource) && feof($resource),
             fn () => $this->pause(),
             fn () => $this->paused,
             fn (string $event) => $this->hasListeners($event)

@@ -19,7 +19,54 @@ final class Util
      */
     public static function pipe(ReadableStreamInterface $source, WritableStreamInterface $dest, array $options = []): WritableStreamInterface
     {
-        return $source->pipe($dest, $options);
+        // source not readable => NO-OP
+        if (! $source->isReadable()) {
+            return $dest;
+        }
+
+        // destination not writable => just pause() source
+        if (! $dest->isWritable()) {
+            $source->pause();
+            return $dest;
+        }
+
+        $dest->emit('pipe', [$source]);
+
+        // forward all source data events as $dest->write()
+        $source->on('data', $dataer = function (string $data) use ($source, $dest): void {
+            $feedMore = $dest->write($data);
+            if (false === $feedMore) {
+                $source->pause();
+            }
+        });
+
+        $dest->on('close', function () use ($source, $dataer): void {
+            $source->removeListener('data', $dataer);
+            $source->pause();
+        });
+
+        // forward destination drain as $source->resume()
+        $dest->on('drain', $drainer = function () use ($source): void {
+            $source->resume();
+        });
+
+        $source->on('close', function () use ($dest, $drainer): void {
+            $dest->removeListener('drain', $drainer);
+        });
+
+        // forward end event from source as $dest->end()
+        $end = $options['end'] ?? true;
+        if ($end) {
+            $source->on('end', $ender = function () use ($dest): void {
+                $dest->end();
+            });
+
+            $dest->on('close', function () use ($source, $ender): void {
+                $source->removeListener('end', $ender);
+            });
+        }
+
+        return $dest;
     }
 
     /**

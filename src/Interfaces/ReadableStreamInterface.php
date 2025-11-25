@@ -30,11 +30,6 @@ interface ReadableStreamInterface extends EventEmitterInterface
     public function isReadable(): bool;
 
     /**
-     * Checks if the end of the stream has been reached and no more data will become available.
-     */
-    public function isEof(): bool;
-
-    /**
      * Halts the emission of 'data' events, signaling a need to temporarily stop data flow.
      */
     public function pause(): void;
@@ -43,16 +38,6 @@ interface ReadableStreamInterface extends EventEmitterInterface
      * Resumes the emission of 'data' events, allowing data to flow again.
      */
     public function resume(): void;
-
-    /**
-     * Determines if the stream is currently paused and not emitting data.
-     */
-    public function isPaused(): bool;
-
-    /**
-     * Seek to a specific position in the stream.
-     */
-    public function seek(int $offset, int $whence = SEEK_SET): bool;
 
     /**
      * Forcefully terminates the stream and closes the underlying resource.

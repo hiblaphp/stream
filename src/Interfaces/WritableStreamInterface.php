@@ -34,12 +34,6 @@ interface WritableStreamInterface extends EventEmitterInterface
     public function isWritable(): bool;
 
     /**
-     * Checks if the stream is in the process of closing after `end()` has been called.
-     * During this state, new writes are not accepted, but the buffer is still being flushed.
-     */
-    public function isEnding(): bool;
-
-    /**
      * Forcefully terminates the stream and closes the underlying resource, discarding any buffered data.
      */
     public function close(): void;

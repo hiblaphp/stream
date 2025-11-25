@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Hibla\Stream;
 
-use Evenement\EventEmitterTrait;
+use Evenement\EventEmitter;
 use Hibla\Stream\Interfaces\DuplexStreamInterface;
 use Hibla\Stream\Interfaces\ReadableStreamInterface;
 use Hibla\Stream\Interfaces\WritableStreamInterface;
@@ -13,10 +13,8 @@ use Hibla\Stream\Interfaces\WritableStreamInterface;
  * Creates a duplex stream from separate readable and writable streams.
  * This is useful for combining independent streams into a single bidirectional interface.
  */
-class CompositeStream implements DuplexStreamInterface
+class CompositeStream extends EventEmitter implements DuplexStreamInterface
 {
-    use EventEmitterTrait;
-
     private ReadableStreamInterface $readable;
     private WritableStreamInterface $writable;
     private bool $closed = false;
@@ -53,14 +51,12 @@ class CompositeStream implements DuplexStreamInterface
         return $this->writable;
     }
 
-    // ReadableStreamInterface methods
-
     /**
      * @inheritdoc
      */
     public function pipe(WritableStreamInterface $destination, array $options = []): WritableStreamInterface
     {
-        return $this->readable->pipe($destination, $options);
+        return Util::pipe($this->readable, $destination, $options);
     }
 
     /**
@@ -69,14 +65,6 @@ class CompositeStream implements DuplexStreamInterface
     public function isReadable(): bool
     {
         return ! $this->closed && $this->readable->isReadable();
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function isEof(): bool
-    {
-        return $this->readable->isEof();
     }
 
     /**
@@ -98,24 +86,6 @@ class CompositeStream implements DuplexStreamInterface
             $this->readable->resume();
         }
     }
-
-    /**
-     * @inheritdoc
-     */
-    public function isPaused(): bool
-    {
-        return $this->readable->isPaused();
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function seek(int $offset, int $whence = SEEK_SET): bool
-    {
-        return $this->readable->seek($offset, $whence);
-    }
-
-    // WritableStreamInterface methods
 
     /**
      * @inheritdoc
@@ -154,14 +124,6 @@ class CompositeStream implements DuplexStreamInterface
     /**
      * @inheritdoc
      */
-    public function isEnding(): bool
-    {
-        return $this->writable->isEnding();
-    }
-
-    /**
-     * @inheritdoc
-     */
     public function close(): void
     {
         if ($this->closed) {
@@ -185,14 +147,14 @@ class CompositeStream implements DuplexStreamInterface
     private function setupEventForwarding(): void
     {
         // Forward readable events
-        $this->forwardEvents($this->readable, ['data', 'end', 'pause', 'resume', 'pipe', 'unpipe']);
+        Util::forwardEvents($this->readable, $this, ['data', 'end', 'pause', 'resume', 'pipe', 'unpipe']);
         
         // Forward writable events
-        $this->forwardEvents($this->writable, ['drain', 'finish']);
+        Util::forwardEvents($this->writable, $this, ['drain', 'finish']);
 
         // Forward error events from both
-        $this->readable->on('error', fn (...$args) => $this->emit('error', $args));
-        $this->writable->on('error', fn (...$args) => $this->emit('error', $args));
+        Util::forwardEvents($this->readable, $this, ['error']);
+        Util::forwardEvents($this->writable, $this, ['error']);
 
         // Auto-close when both sides are closed
         $this->readable->on('close', function () {
@@ -206,17 +168,6 @@ class CompositeStream implements DuplexStreamInterface
                 $this->close();
             }
         });
-    }
-
-    /**
-     * @param ReadableStreamInterface|WritableStreamInterface $source
-     * @param array<string> $events
-     */
-    private function forwardEvents(object $source, array $events): void
-    {
-        foreach ($events as $event) {
-            $source->on($event, fn (...$args) => $this->emit($event, $args));
-        }
     }
 
     public function __destruct()

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Hibla\Stream\Handlers;
 
 use Hibla\EventLoop\Loop;
+use Hibla\EventLoop\ValueObjects\StreamWatcher;
 use Hibla\Stream\Exceptions\StreamException;
 
 class WritableStreamHandler
@@ -35,7 +36,7 @@ class WritableStreamHandler
 
     public function getBufferLength(): int
     {
-        return strlen($this->writeBuffer);
+        return \strlen($this->writeBuffer);
     }
 
     public function bufferData(string $data): void
@@ -61,7 +62,7 @@ class WritableStreamHandler
         $this->watcherId = Loop::addStreamWatcher(
             $this->resource,
             fn () => $this->handleWritable($ending),
-            'write'
+            StreamWatcher::TYPE_WRITE
         );
     }
 
@@ -89,10 +90,10 @@ class WritableStreamHandler
             return;
         }
 
-        $wasAboveLimit = strlen($this->writeBuffer) >= $this->softLimit;
+        $wasAboveLimit = \strlen($this->writeBuffer) >= $this->softLimit;
         $this->writeBuffer = substr($this->writeBuffer, $written);
         $this->totalWritten += $written;
-        $isNowBelowLimit = strlen($this->writeBuffer) < $this->softLimit;
+        $isNowBelowLimit = \strlen($this->writeBuffer) < $this->softLimit;
 
         // Emit drain when buffer goes below soft limit
         if ($wasAboveLimit && $isNowBelowLimit) {

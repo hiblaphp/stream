@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Hibla\Stream\Handlers;
 
 use Hibla\EventLoop\Loop;
+use Hibla\EventLoop\ValueObjects\StreamWatcher;
 use Hibla\Promise\Interfaces\CancellablePromiseInterface;
 use Hibla\Stream\Exceptions\StreamException;
 
@@ -117,7 +118,7 @@ class ReadableStreamHandler
         $this->watcherId = Loop::addStreamWatcher(
             $this->resource,
             fn () => $this->handleReadable(),
-            'read'
+            StreamWatcher::TYPE_READ
         );
     }
 
