@@ -2,17 +2,6 @@
 
 declare(strict_types=1);
 
-use Hibla\EventLoop\Loop;
-
-function createTempFile(string $content = ''): string
-{
-    $file = tempnam(sys_get_temp_dir(), 'stream_test_');
-    if ($content) {
-        file_put_contents($file, $content);
-    }
-
-    return $file;
-}
 
 function cleanupTempFile(string $file): void
 {
@@ -73,43 +62,16 @@ function closeSocketPair(array $pair): void
     }
 }
 
-function asyncTest(callable $test, int $timeoutMs = 5000): void
+function createTempFile(string $content = ''): string
 {
-    $completed = false;
+    $file = tempnam(sys_get_temp_dir(), 'test_');
+    file_put_contents($file, $content);
+    return $file;
+}
 
-    Loop::addTimer($timeoutMs / 1000, function () use (&$completed) {
-        if (! $completed) {
-            throw new RuntimeException('Test timeout');
-        }
-    });
-
-    Loop::nextTick(function () use ($test, &$completed) {
-        try {
-            $result = $test();
-            if ($result instanceof PromiseInterface) {
-                $result->then(
-                    function () use (&$completed) {
-                        $completed = true;
-                        Loop::stop();
-                    },
-                    function ($e) use (&$completed) {
-                        $completed = true;
-                        Loop::stop();
-
-                        throw $e;
-                    }
-                );
-            } else {
-                $completed = true;
-                Loop::stop();
-            }
-        } catch (Throwable $e) {
-            $completed = true;
-            Loop::stop();
-
-            throw $e;
-        }
-    });
-
-    Loop::run();
+function cleanupFile(string $file): void
+{
+    if (file_exists($file)) {
+        unlink($file);
+    }
 }
