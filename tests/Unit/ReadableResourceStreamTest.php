@@ -391,12 +391,6 @@ describe('ReadableResourceStream', function () {
         cleanupTempFile($file);
     });
 
-    test('seek returns false for non-seekable stream', function () {
-        // Skip this test as popen creates issues with resource management
-        // Non-seekable streams like network sockets would be tested in integration tests
-        expect(true)->toBeTrue();
-    })->skip('popen resource management is problematic in tests');
-
     test('emits pause event when paused', function () {
         $file = createTempFile('test');
         $resource = fopen($file, 'r');

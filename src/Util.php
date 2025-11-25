@@ -66,6 +66,9 @@ final class Util
             });
         }
 
+        // Start flowing data from source
+        $source->resume();
+
         return $dest;
     }
 
