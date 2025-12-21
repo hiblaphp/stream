@@ -4,23 +4,14 @@ declare(strict_types=1);
 
 namespace Hibla\Stream;
 
-use Hibla\Promise\CancellablePromise;
-use Hibla\Promise\Interfaces\CancellablePromiseInterface;
+use Evenement\EventEmitter;
 use Hibla\Stream\Exceptions\StreamException;
-use Hibla\Stream\Handlers\PipeHandler;
 use Hibla\Stream\Handlers\ReadableStreamHandler;
-use Hibla\Stream\Handlers\ReadAllHandler;
-use Hibla\Stream\Handlers\ReadLineHandler;
 use Hibla\Stream\Interfaces\ReadableStreamInterface;
 use Hibla\Stream\Interfaces\WritableStreamInterface;
-use Hibla\Stream\Traits\EventEmitterTrait;
-use Hibla\Stream\Traits\PromiseHelperTrait;
 
-class ReadableStream implements ReadableStreamInterface
+class ReadableResourceStream extends EventEmitter implements ReadableStreamInterface
 {
-    use PromiseHelperTrait;
-    use EventEmitterTrait;
-
     /** @var resource|null The underlying stream resource. */
     private $resource;
 
@@ -31,9 +22,6 @@ class ReadableStream implements ReadableStreamInterface
     private int $chunkSize;
 
     private ReadableStreamHandler $handler;
-    private ReadLineHandler $lineHandler;
-    private ReadAllHandler $allHandler;
-    private PipeHandler $pipeHandler;
 
     /**
      * Initializes the readable stream, validates the resource, and sets it to non-blocking mode.
@@ -44,7 +32,7 @@ class ReadableStream implements ReadableStreamInterface
      */
     public function __construct($resource, int $chunkSize = 65536)
     {
-        if (! is_resource($resource)) {
+        if (! \is_resource($resource)) {
             throw new StreamException('Invalid resource provided');
         }
 
@@ -57,98 +45,31 @@ class ReadableStream implements ReadableStreamInterface
         $this->chunkSize = $chunkSize;
 
         $this->setupNonBlocking($resource, $meta);
-        $this->initializeHandlers();
+        $this->initializeHandler();
+    }
+
+    /**
+     * Get the internal handler for advanced operations.
+     */
+    public function getHandler(): ReadableStreamHandler
+    {
+        return $this->handler;
+    }
+
+    /**
+     * Get the chunk size.
+     */
+    public function getChunkSize(): int
+    {
+        return $this->chunkSize;
     }
 
     /**
      * @inheritdoc
      */
-    public function read(?int $length = null): CancellablePromiseInterface
+    public function pipe(WritableStreamInterface $destination, array $options = []): WritableStreamInterface
     {
-        if (! $this->isReadable()) {
-            return $this->createRejectedPromise(new StreamException('Stream is not readable'));
-        }
-
-        if ($this->eof) {
-            //@phpstan-ignore-next-line
-            return $this->createResolvedPromise(null);
-        }
-
-        /** @var CancellablePromise<string|null> $promise */
-        $promise = new CancellablePromise();
-
-        $this->handler->queueRead($length, $promise);
-
-        $promise->setCancelHandler(function () use ($promise): void {
-            $this->handler->cancelRead($promise);
-        });
-
-        if ($this->paused) {
-            $this->resume();
-        }
-
-        return $promise;
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function readLine(?int $maxLength = null): CancellablePromiseInterface
-    {
-        if (! $this->isReadable()) {
-            return $this->createRejectedPromise(new StreamException('Stream is not readable'));
-        }
-
-        if ($this->eof && $this->handler->getBuffer() === '') {
-            //@phpstan-ignore-next-line
-            return $this->createResolvedPromise(null);
-        }
-
-        $maxLen = $maxLength ?? $this->chunkSize;
-        $buffer = $this->handler->getBuffer();
-
-        $line = $this->lineHandler->findLineInBuffer($buffer, $maxLen);
-        if ($line !== null) {
-            $this->handler->setBuffer($buffer);
-
-            //@phpstan-ignore-next-line
-            return $this->createResolvedPromise($line);
-        }
-
-        $this->handler->clearBuffer();
-
-        return $this->lineHandler->readLineFromStream($buffer, $maxLen);
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function readAll(int $maxLength = 1048576): CancellablePromiseInterface
-    {
-        if (! $this->isReadable()) {
-            return $this->createRejectedPromise(new StreamException('Stream is not readable'));
-        }
-
-        $buffer = $this->handler->getBuffer();
-        $this->handler->clearBuffer();
-
-        return $this->allHandler->readAll($buffer, $maxLength);
-    }
-
-    /**
-     * @inheritdoc
-     */
-    public function pipe(WritableStreamInterface $destination, array $options = []): CancellablePromiseInterface
-    {
-        if (! $this->isReadable()) {
-            return $this->createRejectedPromise(new StreamException('Stream is not readable'));
-        }
-
-        if (! $destination->isWritable()) {
-            return $this->createRejectedPromise(new StreamException('Destination is not writable'));
-        }
-
-        return $this->pipeHandler->pipe($destination, $options);
+        return Util::pipe($this, $destination, $options);
     }
 
     /**
@@ -212,12 +133,13 @@ class ReadableStream implements ReadableStreamInterface
             throw new StreamException('Cannot seek on a closed stream');
         }
 
-        if ($this->resource === null || !is_resource($this->resource)) {
+        if ($this->resource === null || ! \is_resource($this->resource)) {
             throw new StreamException('Invalid stream resource');
         }
 
         $meta = stream_get_meta_data($this->resource);
-        if (isset($meta['seekable']) && !$meta['seekable']) {
+        // PHPStan knows 'seekable' always exists in metadata
+        if ($meta['seekable'] === false) {
             return false;
         }
 
@@ -226,6 +148,7 @@ class ReadableStream implements ReadableStreamInterface
         if ($result === 0) {
             $this->handler->clearBuffer();
             $this->eof = false;
+
             return true;
         }
 
@@ -244,7 +167,7 @@ class ReadableStream implements ReadableStreamInterface
             throw new StreamException('Cannot tell position on a closed stream');
         }
 
-        if ($this->resource === null || !is_resource($this->resource)) {
+        if ($this->resource === null || ! \is_resource($this->resource)) {
             throw new StreamException('Invalid stream resource');
         }
 
@@ -266,13 +189,23 @@ class ReadableStream implements ReadableStreamInterface
 
         $this->handler->rejectAllPending(new StreamException('Stream closed'));
 
-        if ($this->resource !== null && is_resource($this->resource)) {
+        if ($this->resource !== null && \is_resource($this->resource)) {
             @fclose($this->resource);
             $this->resource = null;
         }
 
         $this->emit('close');
         $this->removeAllListeners();
+    }
+
+    /**
+     * Check if there are listeners for an event.
+     */
+    private function hasListeners(string $event): bool
+    {
+        $listeners = $this->listeners($event);
+
+        return \count($listeners) > 0;
     }
 
     /**
@@ -286,9 +219,9 @@ class ReadableStream implements ReadableStreamInterface
 
         $shouldSetNonBlocking = false;
 
-        if (in_array($streamType, ['tcp_socket', 'udp_socket', 'unix_socket', 'ssl_socket', 'TCP/IP', 'tcp_socket/ssl'], true)) {
+        if (\in_array($streamType, ['tcp_socket', 'udp_socket', 'unix_socket', 'ssl_socket', 'TCP/IP', 'tcp_socket/ssl'], true)) {
             $shouldSetNonBlocking = true;
-        } elseif (! $isWindows && in_array($streamType, ['STDIO', 'PLAINFILE', 'TEMP', 'MEMORY'], true)) {
+        } elseif (! $isWindows && \in_array($streamType, ['STDIO', 'PLAINFILE', 'TEMP', 'MEMORY'], true)) {
             $shouldSetNonBlocking = true;
         }
 
@@ -298,7 +231,7 @@ class ReadableStream implements ReadableStreamInterface
         }
     }
 
-    private function initializeHandlers(): void
+    private function initializeHandler(): void
     {
         if ($this->resource === null) {
             throw new StreamException('Resource is null during handler initialization');
@@ -310,45 +243,17 @@ class ReadableStream implements ReadableStreamInterface
             $resource,
             $this->chunkSize,
             function (string $event, ...$args): void {
-                $this->emit($event, ...$args);
+                $this->emit($event, $args);
 
                 if ($event === 'end') {
                     $this->eof = true;
                 }
             },
-            fn() => $this->close(),
-            function () use ($resource) {
-                return is_resource($resource) && feof($resource);
-            },
-            fn() => $this->pause(),
-            fn() => $this->paused,
-            fn(string $event) => $this->hasListeners($event)
-        );
-
-        $this->lineHandler = new ReadLineHandler(
-            fn(?int $length) => $this->read($length),
-            fn(string $data) => $this->handler->prependBuffer($data)
-        );
-
-        $this->allHandler = new ReadAllHandler(
-            $this->chunkSize,
-            fn(?int $length) => $this->read($length)
-        );
-
-        $this->pipeHandler = new PipeHandler(
-            function (string $event, callable $callback): void {
-                $this->on($event, $callback);
-            },
-            function (string $event, callable $callback): void {
-                $this->off($event, $callback);
-            },
-            function (string $event, ...$args): void {
-                $this->emit($event, ...$args);
-            },
-            fn() => $this->pause(),
-            fn() => $this->resume(),
-            fn() => $this->isReadable(),
-            fn() => $this->isEof()
+            fn () => $this->close(),
+            fn () => \is_resource($resource) && feof($resource),
+            fn () => $this->pause(),
+            fn () => $this->paused,
+            fn (string $event) => $this->hasListeners($event)
         );
     }
 

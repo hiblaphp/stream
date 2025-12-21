@@ -4,51 +4,36 @@ declare(strict_types=1);
 
 namespace Hibla\Stream\Traits;
 
-use Hibla\Promise\CancellablePromise;
-use Hibla\Promise\Interfaces\CancellablePromiseInterface;
+use Hibla\Promise\Interfaces\PromiseInterface;
+use Hibla\Promise\Promise;
 
 trait PromiseHelperTrait
 {
     /**
-     * Create a resolved CancellablePromise
+     * Create a resolved void Promise
      *
-     * @template TValue
-     * @param TValue $value
-     * @return CancellablePromiseInterface<TValue>
+     * @return PromiseInterface<void>
      */
-    private function createResolvedPromise(mixed $value): CancellablePromiseInterface
+    private function createResolvedVoidPromise(): PromiseInterface
     {
-        /** @var CancellablePromise<TValue> $promise */
-        $promise = new CancellablePromise();
-        $promise->resolve($value);
-
-        return $promise;
-    }
-
-    /**
-     * Create a rejected CancellablePromise
-     *
-     * @return CancellablePromiseInterface<never>
-     */
-    private function createRejectedPromise(\Throwable $reason): CancellablePromiseInterface
-    {
-        /** @var CancellablePromise<never> $promise */
-        $promise = new CancellablePromise();
-        $promise->reject($reason);
-
-        return $promise;
-    }
-
-    /**
-     * Create a resolved void CancellablePromise
-     *
-     * @return CancellablePromiseInterface<void>
-     */
-    private function createResolvedVoidPromise(): CancellablePromiseInterface
-    {
-        /** @var CancellablePromise<void> $promise */
-        $promise = new CancellablePromise();
+        /** @var Promise<void> $promise */
+        $promise = new Promise();
         $promise->resolve(null);
+
+        return $promise;
+    }
+
+    /**
+     * Create a resolved promise with string|null value.
+     *
+     * @param string|null $value
+     * @return PromiseInterface<string|null>
+     */
+    private function createResolvedStringOrNullPromise(?string $value): PromiseInterface
+    {
+        /** @var Promise<string|null> $promise */
+        $promise = new Promise();
+        $promise->resolve($value);
 
         return $promise;
     }

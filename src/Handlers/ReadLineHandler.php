@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Hibla\Stream\Handlers;
 
-use Hibla\Promise\CancellablePromise;
-use Hibla\Promise\Interfaces\CancellablePromiseInterface;
+use Hibla\Promise\Interfaces\PromiseInterface;
+use Hibla\Promise\Promise;
 
 class ReadLineHandler
 {
     /**
-     * @param callable(int): CancellablePromiseInterface<string|null> $readCallback
+     * @param callable(int): PromiseInterface<string|null> $readCallback
      * @param callable(string): void $prependBufferCallback
      */
     public function __construct(
@@ -30,7 +30,7 @@ class ReadLineHandler
             return $line;
         }
 
-        if (strlen($buffer) >= $maxLength) {
+        if (\strlen($buffer) >= $maxLength) {
             $line = substr($buffer, 0, $maxLength);
             $buffer = substr($buffer, $maxLength);
 
@@ -41,16 +41,16 @@ class ReadLineHandler
     }
 
     /**
-     * @return CancellablePromiseInterface<string|null>
+     * @return PromiseInterface<string|null>
      */
-    public function readLineFromStream(string $initialBuffer, int $maxLength): CancellablePromiseInterface
+    public function readLineFromStream(string $initialBuffer, int $maxLength): PromiseInterface
     {
-        /** @var CancellablePromise<string|null> $promise */
-        $promise = new CancellablePromise();
+        /** @var Promise<string|null> $promise */
+        $promise = new Promise();
         $lineBuffer = $initialBuffer;
         $cancelled = false;
 
-        $promise->setCancelHandler(function () use (&$cancelled) {
+        $promise->onCancel(function () use (&$cancelled) {
             $cancelled = true;
         });
 

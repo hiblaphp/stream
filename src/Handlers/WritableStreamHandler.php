@@ -5,99 +5,42 @@ declare(strict_types=1);
 namespace Hibla\Stream\Handlers;
 
 use Hibla\EventLoop\Loop;
-use Hibla\Promise\Interfaces\CancellablePromiseInterface;
+use Hibla\EventLoop\ValueObjects\StreamWatcher;
 use Hibla\Stream\Exceptions\StreamException;
 
 class WritableStreamHandler
 {
-    /** @var resource */
-    private $resource;
-    private int $softLimit;
     private string $writeBuffer = '';
     private ?string $watcherId = null;
-
-    /**
-     * @var array<array{resolve: callable(int): void, reject: callable(\Throwable): void, bytes: int, promise: CancellablePromiseInterface<int>}>
-     */
-    private array $writeQueue = [];
-
-    /** @var callable(string, mixed=): void */
-    private $emitCallback;
-
-    /** @var callable(): void */
-    private $closeCallback;
+    private int $totalWritten = 0;
 
     /**
      * @param resource $resource
+     * @param callable(string, mixed=): void $emitCallback
+     * @param callable(): void $closeCallback
+     * @param callable(): bool $isEndingCallback
      */
-    public function __construct($resource, int $softLimit, callable $emitCallback, callable $closeCallback)
-    {
-        $this->resource = $resource;
-        $this->softLimit = $softLimit;
-        $this->emitCallback = $emitCallback;
-        $this->closeCallback = $closeCallback;
+    public function __construct(
+        private $resource,
+        private int $softLimit,
+        private $emitCallback,
+        private $closeCallback,
+        private $isEndingCallback
+    ) {
     }
 
     public function getBufferLength(): int
     {
-        return strlen($this->writeBuffer);
+        return \strlen($this->writeBuffer);
     }
 
-    public function hasQueuedWrites(): bool
-    {
-        return $this->writeQueue !== [];
-    }
-
-    /**
-     * @param CancellablePromiseInterface<int> $promise
-     */
-    public function queueWrite(string $data, CancellablePromiseInterface $promise): void
+    public function bufferData(string $data): void
     {
         $this->writeBuffer .= $data;
-        $bytesToWrite = strlen($data);
-
-        $this->writeQueue[] = [
-            'resolve' => fn (int $value) => $promise->resolve($value),
-            'reject' => fn (\Throwable $reason) => $promise->reject($reason),
-            'bytes' => $bytesToWrite,
-            'promise' => $promise,
-        ];
     }
 
-    /**
-     * @param CancellablePromiseInterface<int> $promise
-     */
-    public function cancelWrite(CancellablePromiseInterface $promise): void
+    public function clearBuffer(): void
     {
-        $bytesToRemove = 0;
-
-        foreach ($this->writeQueue as $index => $item) {
-            if ($item['promise'] === $promise) {
-                $bytesToRemove = $item['bytes'];
-                unset($this->writeQueue[$index]);
-                $this->writeQueue = array_values($this->writeQueue);
-
-                break;
-            }
-        }
-
-        if ($bytesToRemove > 0 && strlen($this->writeBuffer) >= $bytesToRemove) {
-            $this->writeBuffer = substr($this->writeBuffer, 0, -$bytesToRemove);
-        }
-
-        if ($this->writeBuffer === '' && $this->watcherId !== null) {
-            $this->stopWatching();
-        }
-    }
-
-    public function rejectAllPending(\Throwable $error): void
-    {
-        while ($this->writeQueue !== []) {
-            $item = array_shift($this->writeQueue);
-            if (! $item['promise']->isCancelled()) {
-                $item['reject']($error);
-            }
-        }
         $this->writeBuffer = '';
     }
 
@@ -114,7 +57,7 @@ class WritableStreamHandler
         $this->watcherId = Loop::addStreamWatcher(
             $this->resource,
             fn () => $this->handleWritable(),
-            'write'
+            StreamWatcher::TYPE_WRITE
         );
     }
 
@@ -137,64 +80,40 @@ class WritableStreamHandler
         if ($written === false || $written === 0) {
             $error = new StreamException('Failed to write to stream');
             ($this->emitCallback)('error', $error);
-
-            while ($this->writeQueue !== []) {
-                $item = array_shift($this->writeQueue);
-                if (! $item['promise']->isCancelled()) {
-                    $item['reject']($error);
-                }
-            }
-
             ($this->closeCallback)();
 
             return;
         }
 
-        $wasAboveLimit = strlen($this->writeBuffer) >= $this->softLimit;
+        $wasAboveLimit = \strlen($this->writeBuffer) >= $this->softLimit;
         $this->writeBuffer = substr($this->writeBuffer, $written);
-        $isNowBelowLimit = strlen($this->writeBuffer) < $this->softLimit;
+        $this->totalWritten += $written;
+        $isNowBelowLimit = \strlen($this->writeBuffer) < $this->softLimit;
 
-        $this->resolveCompletedWrites($written);
-
+        // Emit drain when buffer goes below soft limit
         if ($wasAboveLimit && $isNowBelowLimit) {
             ($this->emitCallback)('drain');
         }
 
-        if ($this->writeBuffer === '' && $this->writeQueue === []) {
-            ($this->emitCallback)('drain');
-        }
-
-        if ($this->writeBuffer === '' && $this->watcherId !== null) {
+        // Check if fully drained
+        if ($this->writeBuffer === '') {
             $this->stopWatching();
-        }
-    }
+            ($this->emitCallback)('drain');
 
-    private function resolveCompletedWrites(int $written): void
-    {
-        $remaining = $written;
-
-        while ($remaining > 0 && $this->writeQueue !== []) {
-            $item = &$this->writeQueue[0];
-
-            if ($item['promise']->isCancelled()) {
-                array_shift($this->writeQueue);
-
-                continue;
-            }
-
-            if ($remaining >= $item['bytes']) {
-                $remaining -= $item['bytes'];
-                $completed = array_shift($this->writeQueue);
-                $completed['resolve']($completed['bytes']);
-            } else {
-                $item['bytes'] -= $remaining;
-                $remaining = 0;
+            // Check if we're ending using the callback
+            if (($this->isEndingCallback)()) {
+                ($this->emitCallback)('finish');
             }
         }
     }
 
     public function isFullyDrained(): bool
     {
-        return $this->writeBuffer === '' && $this->writeQueue === [];
+        return $this->writeBuffer === '';
+    }
+
+    public function getTotalWritten(): int
+    {
+        return $this->totalWritten;
     }
 }

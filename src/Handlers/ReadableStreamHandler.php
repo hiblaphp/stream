@@ -5,18 +5,17 @@ declare(strict_types=1);
 namespace Hibla\Stream\Handlers;
 
 use Hibla\EventLoop\Loop;
-use Hibla\Promise\Interfaces\CancellablePromiseInterface;
+use Hibla\EventLoop\ValueObjects\StreamWatcher;
+use Hibla\Promise\Interfaces\PromiseInterface;
+use Hibla\Promise\Promise;
 use Hibla\Stream\Exceptions\StreamException;
 
 class ReadableStreamHandler
 {
-    /** @var resource */
-    private $resource;
-    private int $chunkSize;
     private string $buffer = '';
     private ?string $watcherId = null;
 
-    /** @var array<array{resolve: callable(string|null): void, reject: callable(\Throwable): void, length: int, promise: CancellablePromiseInterface<string|null>}> */
+    /** @var array<array{resolve: callable(string|null): void, reject: callable(\Throwable): void, length: int, promise: PromiseInterface<string|null>}> */
     private array $readQueue = [];
 
     /**
@@ -29,8 +28,8 @@ class ReadableStreamHandler
      * @param callable(string): bool $hasListenersCallback
      */
     public function __construct(
-        $resource,
-        int $chunkSize,
+        private $resource,
+        private int $chunkSize,
         private $emitCallback,
         private $closeCallback,
         private $isEofCallback,
@@ -38,8 +37,6 @@ class ReadableStreamHandler
         private $isPausedCallback,
         private $hasListenersCallback
     ) {
-        $this->resource = $resource;
-        $this->chunkSize = $chunkSize;
     }
 
     public function getBuffer(): string
@@ -68,9 +65,9 @@ class ReadableStreamHandler
     }
 
     /**
-     * @param CancellablePromiseInterface<string|null> $promise
+     * @param Promise<string|null> $promise
      */
-    public function queueRead(?int $length, CancellablePromiseInterface $promise): void
+    public function queueRead(?int $length, Promise $promise): void
     {
         $this->readQueue[] = [
             'resolve' => fn (string|null $value) => $promise->resolve($value),
@@ -81,9 +78,9 @@ class ReadableStreamHandler
     }
 
     /**
-     * @param CancellablePromiseInterface<string|null> $promise
+     * @param PromiseInterface<string|null> $promise
      */
-    public function cancelRead(CancellablePromiseInterface $promise): void
+    public function cancelRead(PromiseInterface $promise): void
     {
         foreach ($this->readQueue as $index => $item) {
             if ($item['promise'] === $promise) {
@@ -117,7 +114,7 @@ class ReadableStreamHandler
         $this->watcherId = Loop::addStreamWatcher(
             $this->resource,
             fn () => $this->handleReadable(),
-            'read'
+            StreamWatcher::TYPE_READ
         );
     }
 

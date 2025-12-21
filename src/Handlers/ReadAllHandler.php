@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Hibla\Stream\Handlers;
 
-use Hibla\Promise\CancellablePromise;
-use Hibla\Promise\Interfaces\CancellablePromiseInterface;
+use Hibla\Promise\Interfaces\PromiseInterface;
+use Hibla\Promise\Promise;
 
 class ReadAllHandler
 {
     /**
-     * @param callable(int|null): CancellablePromiseInterface<string|null> $readCallback
+     * @param callable(int|null): PromiseInterface<string|null> $readCallback
      */
     public function __construct(
         private int $chunkSize,
@@ -19,35 +19,41 @@ class ReadAllHandler
     }
 
     /**
-     * @return CancellablePromiseInterface<string>
+     * @return PromiseInterface<string>
      */
-    public function readAll(string $initialBuffer, int $maxLength): CancellablePromiseInterface
+    public function readAll(string $initialBuffer, int $maxLength): PromiseInterface
     {
-        /** @var CancellablePromise<string> $promise */
-        $promise = new CancellablePromise();
+        /** @var Promise<string> $promise */
+        $promise = new Promise();
         $buffer = $initialBuffer;
         $cancelled = false;
 
-        $promise->setCancelHandler(function () use (&$cancelled) {
+        /** @var PromiseInterface<string|null>|null $currentReadPromise */
+        $currentReadPromise = null;
+
+        $promise->onCancel(function () use (&$cancelled, &$currentReadPromise) {
             $cancelled = true;
+            if ($currentReadPromise !== null) {
+                $currentReadPromise->cancel();
+            }
         });
 
-        $readMore = function () use ($promise, $maxLength, &$buffer, &$readMore, &$cancelled) {
+        $readMore = function () use ($promise, $maxLength, &$buffer, &$readMore, &$cancelled, &$currentReadPromise) {
             if ($cancelled) {
                 return;
             }
 
-            if (strlen($buffer) >= $maxLength) {
+            if (\strlen($buffer) >= $maxLength) {
                 $promise->resolve($buffer);
 
                 return;
             }
 
-            $readPromise = ($this->readCallback)(min($this->chunkSize, $maxLength - strlen($buffer)));
+            $currentReadPromise = ($this->readCallback)(min($this->chunkSize, $maxLength - \strlen($buffer)));
 
-            $readPromise->then(
+            $currentReadPromise->then(
                 function ($data) use ($promise, &$buffer, &$readMore, &$cancelled) {
-                    /** @phpstan-ignore if.alwaysFalse */
+                    // @phpstan-ignore-next-line php-stan dont know that cancell flag can change in run time during cancellation
                     if ($cancelled) {
                         return;
                     }
@@ -62,7 +68,7 @@ class ReadAllHandler
                     $readMore();
                 }
             )->catch(function ($error) use ($promise, &$cancelled) {
-                /** @phpstan-ignore if.alwaysFalse */
+                // @phpstan-ignore-next-line php-stan dont know that cancell flag can change in run time during cancellation
                 if ($cancelled) {
                     return;
                 }

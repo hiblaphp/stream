@@ -23,7 +23,7 @@ class Stream
             throw new StreamException("Failed to open file for reading: {$path}");
         }
 
-        return new ReadableStream($resource, $chunkSize);
+        return new ReadableResourceStream($resource, $chunkSize);
     }
 
     /**
@@ -39,7 +39,7 @@ class Stream
             throw new StreamException("Failed to open file for writing: {$path}");
         }
 
-        return new WritableStream($resource, $softLimit);
+        return new WritableResourceStream($resource, $softLimit);
     }
 
     /**
@@ -54,7 +54,7 @@ class Stream
             throw new StreamException("Failed to open file for read/write: {$path}");
         }
 
-        return new DuplexStream($resource, $readChunkSize, $writeSoftLimit);
+        return new DuplexResourceStream($resource, $readChunkSize, $writeSoftLimit);
     }
 
     /**
@@ -65,7 +65,7 @@ class Stream
      */
     public static function readable($resource, int $chunkSize = 8192): ReadableStreamInterface
     {
-        return new ReadableStream($resource, $chunkSize);
+        return new ReadableResourceStream($resource, $chunkSize);
     }
 
     /**
@@ -76,7 +76,7 @@ class Stream
      */
     public static function writable($resource, int $softLimit = 65536): WritableStreamInterface
     {
-        return new WritableStream($resource, $softLimit);
+        return new WritableResourceStream($resource, $softLimit);
     }
 
     /**
@@ -86,7 +86,7 @@ class Stream
      */
     public static function duplex($resource, int $readChunkSize = 8192, int $writeSoftLimit = 65536): DuplexStreamInterface
     {
-        return new DuplexStream($resource, $readChunkSize, $writeSoftLimit);
+        return new DuplexResourceStream($resource, $readChunkSize, $writeSoftLimit);
     }
 
     /**
@@ -114,7 +114,7 @@ class Stream
      */
     public static function stdin(int $chunkSize = 8192): ReadableStreamInterface
     {
-        return new ReadableStream(STDIN, $chunkSize);
+        return new ReadableResourceStream(STDIN, $chunkSize);
     }
 
     /**
@@ -122,7 +122,7 @@ class Stream
      */
     public static function stdout(int $softLimit = 65536): WritableStreamInterface
     {
-        return new WritableStream(STDOUT, $softLimit);
+        return new WritableResourceStream(STDOUT, $softLimit);
     }
 
     /**
@@ -130,7 +130,7 @@ class Stream
      */
     public static function stderr(int $softLimit = 65536): WritableStreamInterface
     {
-        return new WritableStream(STDERR, $softLimit);
+        return new WritableResourceStream(STDERR, $softLimit);
     }
 
     /**
@@ -140,8 +140,8 @@ class Stream
     public static function stdio(int $readChunkSize = 8192, int $writeSoftLimit = 65536): DuplexStreamInterface
     {
         return new CompositeStream(
-            new ReadableStream(STDIN, $readChunkSize),
-            new WritableStream(STDOUT, $writeSoftLimit)
+            new ReadableResourceStream(STDIN, $readChunkSize),
+            new WritableResourceStream(STDOUT, $writeSoftLimit)
         );
     }
 }

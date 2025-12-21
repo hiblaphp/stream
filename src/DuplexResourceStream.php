@@ -5,32 +5,34 @@ declare(strict_types=1);
 namespace Hibla\Stream;
 
 use Evenement\EventEmitter;
+use Hibla\Stream\Exceptions\StreamException;
 use Hibla\Stream\Interfaces\DuplexStreamInterface;
-use Hibla\Stream\Interfaces\ReadableStreamInterface;
 use Hibla\Stream\Interfaces\WritableStreamInterface;
 
-/**
- * Creates a duplex stream from separate readable and writable streams.
- * This is useful for combining independent streams into a single bidirectional interface.
- */
-class CompositeStream extends EventEmitter implements DuplexStreamInterface
+class DuplexResourceStream extends EventEmitter implements DuplexStreamInterface
 {
-    private ReadableStreamInterface $readable;
-    private WritableStreamInterface $writable;
+    private ReadableResourceStream $readable;
+    private WritableResourceStream $writable;
     private bool $closed = false;
 
     /**
-     * Creates a duplex stream from separate readable and writable streams.
-     *
-     * @param ReadableStreamInterface $readable The readable side of the stream
-     * @param WritableStreamInterface $writable The writable side of the stream
+     * @param resource $resource Stream resource (must be read+write)
+     * @param int $readChunkSize Default chunk size for reads
+     * @param int $writeSoftLimit Soft limit for write buffer
      */
-    public function __construct(
-        ReadableStreamInterface $readable,
-        WritableStreamInterface $writable
-    ) {
-        $this->readable = $readable;
-        $this->writable = $writable;
+    public function __construct($resource, int $readChunkSize = 8192, int $writeSoftLimit = 65536)
+    {
+        if (! \is_resource($resource)) {
+            throw new StreamException('Invalid resource provided');
+        }
+
+        $meta = stream_get_meta_data($resource);
+        if (! str_contains($meta['mode'], '+')) {
+            throw new StreamException('Resource must be opened in read+write mode (e.g., "r+", "w+", "a+")');
+        }
+
+        $this->readable = new ReadableResourceStream($resource, $readChunkSize);
+        $this->writable = new WritableResourceStream($resource, $writeSoftLimit);
 
         $this->setupEventForwarding();
     }
@@ -38,7 +40,7 @@ class CompositeStream extends EventEmitter implements DuplexStreamInterface
     /**
      * Get the readable side of the stream.
      */
-    public function getReadable(): ReadableStreamInterface
+    public function getReadable(): ReadableResourceStream
     {
         return $this->readable;
     }
@@ -46,7 +48,7 @@ class CompositeStream extends EventEmitter implements DuplexStreamInterface
     /**
      * Get the writable side of the stream.
      */
-    public function getWritable(): WritableStreamInterface
+    public function getWritable(): WritableResourceStream
     {
         return $this->writable;
     }
@@ -64,7 +66,7 @@ class CompositeStream extends EventEmitter implements DuplexStreamInterface
      */
     public function isReadable(): bool
     {
-        return ! $this->closed && $this->readable->isReadable();
+        return $this->readable->isReadable();
     }
 
     /**
@@ -72,9 +74,7 @@ class CompositeStream extends EventEmitter implements DuplexStreamInterface
      */
     public function pause(): void
     {
-        if (! $this->closed) {
-            $this->readable->pause();
-        }
+        $this->readable->pause();
     }
 
     /**
@@ -82,7 +82,7 @@ class CompositeStream extends EventEmitter implements DuplexStreamInterface
      */
     public function resume(): void
     {
-        if (! $this->closed && $this->writable->isWritable()) {
+        if ($this->writable->isWritable()) {
             $this->readable->resume();
         }
     }
@@ -92,12 +92,6 @@ class CompositeStream extends EventEmitter implements DuplexStreamInterface
      */
     public function write(string $data): bool
     {
-        if ($this->closed) {
-            $this->emit('error', [new \RuntimeException('Stream is closed')]);
-
-            return false;
-        }
-
         return $this->writable->write($data);
     }
 
@@ -106,10 +100,6 @@ class CompositeStream extends EventEmitter implements DuplexStreamInterface
      */
     public function end(?string $data = null): void
     {
-        if ($this->closed) {
-            return;
-        }
-
         $this->readable->pause();
         $this->writable->end($data);
     }
@@ -119,7 +109,7 @@ class CompositeStream extends EventEmitter implements DuplexStreamInterface
      */
     public function isWritable(): bool
     {
-        return ! $this->closed && $this->writable->isWritable();
+        return $this->writable->isWritable();
     }
 
     /**
@@ -133,13 +123,8 @@ class CompositeStream extends EventEmitter implements DuplexStreamInterface
 
         $this->closed = true;
 
-        if ($this->readable->isReadable()) {
-            $this->readable->close();
-        }
-
-        if ($this->writable->isWritable()) {
-            $this->writable->close();
-        }
+        $this->readable->close();
+        $this->writable->close();
 
         $this->emit('close');
         $this->removeAllListeners();
@@ -152,15 +137,15 @@ class CompositeStream extends EventEmitter implements DuplexStreamInterface
         Util::forwardEvents($this->readable, $this, ['error']);
         Util::forwardEvents($this->writable, $this, ['error']);
 
-        // Auto-close when both sides are closed
+        // Auto-close when both sides close
         $this->readable->on('close', function () {
-            if (! $this->closed && ! $this->writable->isWritable()) {
+            if (! $this->closed) {
                 $this->close();
             }
         });
 
         $this->writable->on('close', function () {
-            if (! $this->closed && ! $this->readable->isReadable()) {
+            if (! $this->closed) {
                 $this->close();
             }
         });
