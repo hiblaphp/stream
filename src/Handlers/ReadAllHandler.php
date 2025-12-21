@@ -4,13 +4,13 @@ declare(strict_types=1);
 
 namespace Hibla\Stream\Handlers;
 
-use Hibla\Promise\CancellablePromise;
-use Hibla\Promise\Interfaces\CancellablePromiseInterface;
+use Hibla\Promise\Promise;
+use Hibla\Promise\Interfaces\PromiseInterface;
 
 class ReadAllHandler
 {
     /**
-     * @param callable(int|null): CancellablePromiseInterface<string|null> $readCallback
+     * @param callable(int|null): PromiseInterface<string|null> $readCallback
      */
     public function __construct(
         private int $chunkSize,
@@ -19,19 +19,19 @@ class ReadAllHandler
     }
 
     /**
-     * @return CancellablePromiseInterface<string>
+     * @return PromiseInterface<string>
      */
-    public function readAll(string $initialBuffer, int $maxLength): CancellablePromiseInterface
+    public function readAll(string $initialBuffer, int $maxLength): PromiseInterface
     {
-        /** @var CancellablePromise<string> $promise */
-        $promise = new CancellablePromise();
+        /** @var Promise<string> $promise */
+        $promise = new Promise();
         $buffer = $initialBuffer;
         $cancelled = false;
 
-        /** @var CancellablePromiseInterface<string|null>|null $currentReadPromise */
+        /** @var PromiseInterface<string|null>|null $currentReadPromise */
         $currentReadPromise = null;
 
-        $promise->setCancelHandler(function () use (&$cancelled, &$currentReadPromise) {
+        $promise->onCancel(function () use (&$cancelled, &$currentReadPromise) {
             $cancelled = true;
             if ($currentReadPromise !== null) {
                 $currentReadPromise->cancel();

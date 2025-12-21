@@ -6,7 +6,8 @@ namespace Hibla\Stream\Handlers;
 
 use Hibla\EventLoop\Loop;
 use Hibla\EventLoop\ValueObjects\StreamWatcher;
-use Hibla\Promise\Interfaces\CancellablePromiseInterface;
+use Hibla\Promise\Interfaces\PromiseInterface;
+use Hibla\Promise\Promise;
 use Hibla\Stream\Exceptions\StreamException;
 
 class ReadableStreamHandler
@@ -14,7 +15,7 @@ class ReadableStreamHandler
     private string $buffer = '';
     private ?string $watcherId = null;
 
-    /** @var array<array{resolve: callable(string|null): void, reject: callable(\Throwable): void, length: int, promise: CancellablePromiseInterface<string|null>}> */
+    /** @var array<array{resolve: callable(string|null): void, reject: callable(\Throwable): void, length: int, promise: PromiseInterface<string|null>}> */
     private array $readQueue = [];
 
     /**
@@ -64,9 +65,9 @@ class ReadableStreamHandler
     }
 
     /**
-     * @param CancellablePromiseInterface<string|null> $promise
+     * @param Promise<string|null> $promise
      */
-    public function queueRead(?int $length, CancellablePromiseInterface $promise): void
+    public function queueRead(?int $length, Promise $promise): void
     {
         $this->readQueue[] = [
             'resolve' => fn (string|null $value) => $promise->resolve($value),
@@ -77,9 +78,9 @@ class ReadableStreamHandler
     }
 
     /**
-     * @param CancellablePromiseInterface<string|null> $promise
+     * @param PromiseInterface<string|null> $promise
      */
-    public function cancelRead(CancellablePromiseInterface $promise): void
+    public function cancelRead(PromiseInterface $promise): void
     {
         foreach ($this->readQueue as $index => $item) {
             if ($item['promise'] === $promise) {

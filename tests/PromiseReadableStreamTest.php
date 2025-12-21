@@ -9,7 +9,7 @@ test('reads data from file', function () {
     $resource = fopen($file, 'r');
     $stream = PromiseReadableStream::fromResource($resource);
 
-    $data = $stream->readAsync()->await();
+    $data = $stream->readAsync()->wait();
     $stream->close();
     cleanupFile($file);
 
@@ -21,8 +21,8 @@ test('reads in chunks', function () {
     $resource = fopen($file, 'r');
     $stream = PromiseReadableStream::fromResource($resource, 5);
 
-    $chunk1 = $stream->readAsync(5)->await();
-    $chunk2 = $stream->readAsync(5)->await();
+    $chunk1 = $stream->readAsync(5)->wait();
+    $chunk2 = $stream->readAsync(5)->wait();
     $stream->close();
     cleanupFile($file);
 
@@ -36,8 +36,8 @@ test('reads line by line', function () {
     $resource = fopen($file, 'r');
     $stream = PromiseReadableStream::fromResource($resource);
 
-    $line1 = $stream->readLineAsync()->await();
-    $line2 = $stream->readLineAsync()->await();
+    $line1 = $stream->readLineAsync()->wait();
+    $line2 = $stream->readLineAsync()->wait();
     $stream->close();
     cleanupFile($file);
 
@@ -52,7 +52,7 @@ test('reads all content', function () {
     $resource = fopen($file, 'r');
     $stream = PromiseReadableStream::fromResource($resource);
 
-    $data = $stream->readAllAsync()->await();
+    $data = $stream->readAllAsync()->wait();
     $stream->close();
     cleanupFile($file);
 
@@ -64,8 +64,8 @@ test('returns null at EOF', function () {
     $resource = fopen($file, 'r');
     $stream = PromiseReadableStream::fromResource($resource);
 
-    $stream->readAsync()->await();
-    $data = $stream->readAsync()->await();
+    $stream->readAsync()->wait();
+    $data = $stream->readAsync()->wait();
     $stream->close();
     cleanupFile($file);
 
@@ -78,7 +78,7 @@ test('handles large files', function () {
     $resource = fopen($file, 'r');
     $stream = PromiseReadableStream::fromResource($resource);
 
-    $data = $stream->readAllAsync()->await();
+    $data = $stream->readAllAsync()->wait();
     $stream->close();
     cleanupFile($file);
 
@@ -90,7 +90,7 @@ test('returns null for empty file', function () {
     $resource = fopen($file, 'r');
     $stream = PromiseReadableStream::fromResource($resource);
 
-    $data = $stream->readAsync()->await();
+    $data = $stream->readAsync()->wait();
     $stream->close();
     cleanupFile($file);
 

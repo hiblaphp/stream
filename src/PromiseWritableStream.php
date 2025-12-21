@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Hibla\Stream;
 
-use Hibla\Promise\CancellablePromise;
-use Hibla\Promise\Interfaces\CancellablePromiseInterface;
+use Hibla\Promise\Promise;
+use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Stream\Exceptions\StreamException;
 use Hibla\Stream\Interfaces\PromiseWritableStreamInterface;
 use Hibla\Stream\Traits\PromiseHelperTrait;
@@ -40,7 +40,7 @@ class PromiseWritableStream extends WritableResourceStream implements PromiseWri
     /**
      * @inheritdoc
      */
-    public function writeAsync(string $data): CancellablePromiseInterface
+    public function writeAsync(string $data): PromiseInterface
     {
         if (! $this->isWritable()) {
             return $this->createRejectedPromise(new StreamException('Stream is not writable'));
@@ -50,8 +50,8 @@ class PromiseWritableStream extends WritableResourceStream implements PromiseWri
             return $this->createResolvedPromise(0);
         }
 
-        /** @var CancellablePromise<int> $promise */
-        $promise = new CancellablePromise();
+        /** @var Promise<int> $promise */
+        $promise = new Promise();
         $bytesToWrite = \strlen($data);
         $cancelled = false;
 
@@ -101,7 +101,7 @@ class PromiseWritableStream extends WritableResourceStream implements PromiseWri
         $this->on('drain', $drainHandler);
         $this->on('error', $errorHandler);
 
-        $promise->setCancelHandler(function () use (&$cancelled, &$drainHandler, &$errorHandler): void {
+        $promise->onCancel(function () use (&$cancelled, &$drainHandler, &$errorHandler): void {
             $cancelled = true;
             $this->removeListener('drain', $drainHandler);
             $this->removeListener('error', $errorHandler);
@@ -120,7 +120,7 @@ class PromiseWritableStream extends WritableResourceStream implements PromiseWri
     /**
      * @inheritdoc
      */
-    public function writeLineAsync(string $data): CancellablePromiseInterface
+    public function writeLineAsync(string $data): PromiseInterface
     {
         return $this->writeAsync($data . "\n");
     }
@@ -128,14 +128,14 @@ class PromiseWritableStream extends WritableResourceStream implements PromiseWri
     /**
      * @inheritdoc
      */
-    public function endAsync(?string $data = null): CancellablePromiseInterface
+    public function endAsync(?string $data = null): PromiseInterface
     {
         if ($this->isEnding() || ! $this->isWritable()) {
             return $this->createResolvedVoidPromise();
         }
 
-        /** @var CancellablePromise<void> $promise */
-        $promise = new CancellablePromise();
+        /** @var Promise<void> $promise */
+        $promise = new Promise();
         $cancelled = false;
 
         $finishHandler = function () use ($promise, &$cancelled): void {
@@ -158,7 +158,7 @@ class PromiseWritableStream extends WritableResourceStream implements PromiseWri
         $this->once('finish', $finishHandler);
         $this->on('error', $errorHandler);
 
-        $promise->setCancelHandler(function () use (&$cancelled, $finishHandler, $errorHandler): void {
+        $promise->onCancel(function () use (&$cancelled, $finishHandler, $errorHandler): void {
             $cancelled = true;
             $this->removeListener('finish', $finishHandler);
             $this->removeListener('error', $errorHandler);

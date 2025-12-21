@@ -10,8 +10,8 @@ test('writes data to file', function () {
     stream_set_blocking($resource, false);
     $stream = PromiseWritableStream::fromResource($resource);
 
-    $stream->writeAsync('Hello, World!')->await();
-    $stream->endAsync()->await();
+    $stream->writeAsync('Hello, World!')->wait();
+    $stream->endAsync()->wait();
     $content = file_get_contents($file);
     cleanupFile($file);
 
@@ -24,10 +24,10 @@ test('writes multiple chunks', function () {
     stream_set_blocking($resource, false);
     $stream = PromiseWritableStream::fromResource($resource);
 
-    $stream->writeAsync('First ')->await();
-    $stream->writeAsync('Second ')->await();
-    $stream->writeAsync('Third')->await();
-    $stream->endAsync()->await();
+    $stream->writeAsync('First ')->wait();
+    $stream->writeAsync('Second ')->wait();
+    $stream->writeAsync('Third')->wait();
+    $stream->endAsync()->wait();
     $content = file_get_contents($file);
     cleanupFile($file);
 
@@ -40,9 +40,9 @@ test('writes line with newline', function () {
     stream_set_blocking($resource, false);
     $stream = PromiseWritableStream::fromResource($resource);
 
-    $stream->writeLineAsync('Line 1')->await();
-    $stream->writeLineAsync('Line 2')->await();
-    $stream->endAsync()->await();
+    $stream->writeLineAsync('Line 1')->wait();
+    $stream->writeLineAsync('Line 2')->wait();
+    $stream->endAsync()->wait();
     $content = file_get_contents($file);
     cleanupFile($file);
 
@@ -55,8 +55,8 @@ test('ends stream with data', function () {
     stream_set_blocking($resource, false);
     $stream = PromiseWritableStream::fromResource($resource);
 
-    $stream->writeAsync('First')->await();
-    $stream->endAsync(' Last')->await();
+    $stream->writeAsync('First')->wait();
+    $stream->endAsync(' Last')->wait();
     $content = file_get_contents($file);
     cleanupFile($file);
 
@@ -70,8 +70,8 @@ test('writes large data', function () {
     $stream = PromiseWritableStream::fromResource($resource);
 
     $content = str_repeat('Z', 50000);
-    $stream->writeAsync($content)->await();
-    $stream->endAsync()->await();
+    $stream->writeAsync($content)->wait();
+    $stream->endAsync()->wait();
     $written = file_get_contents($file);
     cleanupFile($file);
 
@@ -85,7 +85,7 @@ test('checks writable stream state', function () {
     $stream = PromiseWritableStream::fromResource($resource);
 
     $writable = $stream->isWritable();
-    $stream->endAsync()->await();
+    $stream->endAsync()->wait();
     $notWritable = ! $stream->isWritable();
     cleanupFile($file);
 

@@ -21,10 +21,9 @@
     },
     "require-dev": {
         "laravel/pint": "^1.10",
-        "pestphp/pest": "^3.0",
+        "pestphp/pest": "^4.0",
         "phpstan/phpstan": "^2.1",
-        "phpstan/phpstan-strict-rules": "^2.0",
-        "hiblaphp/task": "dev-main"
+        "phpstan/phpstan-strict-rules": "^2.0"
     },
     "config": {
         "allow-plugins": {
@@ -35,9 +34,6 @@
         "test": "./vendor/bin/pest",
         "format": "./vendor/bin/pint",
         "format-test": "./vendor/bin/pint --test",
-        "analyze": "./vendor/bin/phpstan analyse",
-        "test-unit": "./vendor/bin/pest tests/Unit",
-        "test-integration": "./vendor/bin/pest tests/Integration",
-        "test-feature": "./vendor/bin/pest tests/Feature"
+        "analyze": "./vendor/bin/phpstan analyse"
     }
 }

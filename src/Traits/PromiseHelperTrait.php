@@ -4,50 +4,50 @@ declare(strict_types=1);
 
 namespace Hibla\Stream\Traits;
 
-use Hibla\Promise\CancellablePromise;
-use Hibla\Promise\Interfaces\CancellablePromiseInterface;
+use Hibla\Promise\Promise;
+use Hibla\Promise\Interfaces\PromiseInterface;
 
 trait PromiseHelperTrait
 {
     /**
-     * Create a resolved CancellablePromise
+     * Create a resolved Promise
      *
      * @template TValue
      * @param TValue $value
-     * @return CancellablePromiseInterface<TValue>
+     * @return PromiseInterface<TValue>
      */
-    private function createResolvedPromise(mixed $value): CancellablePromiseInterface
+    private function createResolvedPromise(mixed $value): PromiseInterface
     {
-        /** @var CancellablePromise<TValue> $promise */
-        $promise = new CancellablePromise();
+        /** @var Promise<TValue> $promise */
+        $promise = new Promise();
         $promise->resolve($value);
 
         return $promise;
     }
 
     /**
-     * Create a rejected CancellablePromise
+     * Create a rejected Promise
      *
-     * @return CancellablePromiseInterface<never>
+     * @return PromiseInterface<never>
      */
-    private function createRejectedPromise(\Throwable $reason): CancellablePromiseInterface
+    private function createRejectedPromise(\Throwable $reason): PromiseInterface
     {
-        /** @var CancellablePromise<never> $promise */
-        $promise = new CancellablePromise();
+        /** @var Promise<never> $promise */
+        $promise = new Promise();
         $promise->reject($reason);
 
         return $promise;
     }
 
     /**
-     * Create a resolved void CancellablePromise
+     * Create a resolved void Promise
      *
-     * @return CancellablePromiseInterface<void>
+     * @return PromiseInterface<void>
      */
-    private function createResolvedVoidPromise(): CancellablePromiseInterface
+    private function createResolvedVoidPromise(): PromiseInterface
     {
-        /** @var CancellablePromise<void> $promise */
-        $promise = new CancellablePromise();
+        /** @var Promise<void> $promise */
+        $promise = new Promise();
         $promise->resolve(null);
 
         return $promise;
@@ -57,12 +57,12 @@ trait PromiseHelperTrait
      * Create a resolved promise with string|null value.
      *
      * @param string|null $value
-     * @return CancellablePromiseInterface<string|null>
+     * @return PromiseInterface<string|null>
      */
-    private function createResolvedStringOrNullPromise(?string $value): CancellablePromiseInterface
+    private function createResolvedStringOrNullPromise(?string $value): PromiseInterface
     {
-        /** @var CancellablePromise<string|null> $promise */
-        $promise = new CancellablePromise();
+        /** @var Promise<string|null> $promise */
+        $promise = new Promise();
         $promise->resolve($value);
 
         return $promise;

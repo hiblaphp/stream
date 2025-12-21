@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Hibla\Stream;
 
-use Hibla\Promise\CancellablePromise;
-use Hibla\Promise\Interfaces\CancellablePromiseInterface;
+use Hibla\Promise\Promise;
+use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Stream\Exceptions\StreamException;
 use Hibla\Stream\Handlers\ReadAllHandler;
 use Hibla\Stream\Handlers\ReadLineHandler;
@@ -47,7 +47,7 @@ class PromiseReadableStream extends ReadableResourceStream implements PromiseRea
     /**
      * @inheritdoc
      */
-    public function readAsync(?int $length = null): CancellablePromiseInterface
+    public function readAsync(?int $length = null): PromiseInterface
     {
         if (! $this->isReadable()) {
             return $this->createRejectedPromise(new StreamException('Stream is not readable'));
@@ -57,13 +57,13 @@ class PromiseReadableStream extends ReadableResourceStream implements PromiseRea
             return $this->createResolvedStringOrNullPromise(null);
         }
 
-        /** @var CancellablePromise<string|null> $promise */
-        $promise = new CancellablePromise();
+        /** @var Promise<string|null> $promise */
+        $promise = new Promise();
 
         $handler = $this->getHandler();
         $handler->queueRead($length, $promise);
 
-        $promise->setCancelHandler(function () use ($promise, $handler): void {
+        $promise->onCancel(function () use ($promise, $handler): void {
             $handler->cancelRead($promise);
         });
 
@@ -77,7 +77,7 @@ class PromiseReadableStream extends ReadableResourceStream implements PromiseRea
     /**
      * @inheritdoc
      */
-    public function readLineAsync(?int $maxLength = null): CancellablePromiseInterface
+    public function readLineAsync(?int $maxLength = null): PromiseInterface
     {
         if (! $this->isReadable()) {
             return $this->createRejectedPromise(new StreamException('Stream is not readable'));
@@ -107,7 +107,7 @@ class PromiseReadableStream extends ReadableResourceStream implements PromiseRea
     /**
      * @inheritdoc
      */
-    public function readAllAsync(int $maxLength = 1048576): CancellablePromiseInterface
+    public function readAllAsync(int $maxLength = 1048576): PromiseInterface
     {
         if (! $this->isReadable()) {
             return $this->createRejectedPromise(new StreamException('Stream is not readable'));
@@ -123,7 +123,7 @@ class PromiseReadableStream extends ReadableResourceStream implements PromiseRea
     /**
      * @inheritdoc
      */
-    public function pipeAsync(WritableStreamInterface $destination, array $options = []): CancellablePromiseInterface
+    public function pipeAsync(WritableStreamInterface $destination, array $options = []): PromiseInterface
     {
         if (! $this->isReadable()) {
             return $this->createRejectedPromise(new StreamException('Stream is not readable'));
@@ -138,8 +138,8 @@ class PromiseReadableStream extends ReadableResourceStream implements PromiseRea
         $cancelled = false;
         $hasError = false;
 
-        /** @var CancellablePromise<int> $promise */
-        $promise = new CancellablePromise();
+        /** @var Promise<int> $promise */
+        $promise = new Promise();
 
         // Track data being written
         $dataHandler = function (string $data) use ($destination, &$totalBytes, &$cancelled, &$hasError): void {
@@ -218,7 +218,7 @@ class PromiseReadableStream extends ReadableResourceStream implements PromiseRea
         };
         $destination->on('drain', $drainHandler);
 
-        $promise->setCancelHandler(function () use (&$cancelled, $destination, &$dataHandler, &$endHandler, &$errorHandler, &$closeHandler, &$drainHandler): void {
+        $promise->onCancel(function () use (&$cancelled, $destination, &$dataHandler, &$endHandler, &$errorHandler, &$closeHandler, &$drainHandler): void {
             $cancelled = true;
             $this->pause();
             $this->detachPipeHandlers($destination, $dataHandler, $endHandler, $errorHandler, $closeHandler);

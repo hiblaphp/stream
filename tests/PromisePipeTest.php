@@ -16,7 +16,7 @@ test('pipes readable to writable stream', function () {
     $readable = PromiseReadableStream::fromResource($rsrc);
     $writable = PromiseWritableStream::fromResource($wsrc);
 
-    $bytes = $readable->pipeAsync($writable)->await();
+    $bytes = $readable->pipeAsync($writable)->wait();
     $result = file_get_contents($dest);
 
     cleanupFile($source);
