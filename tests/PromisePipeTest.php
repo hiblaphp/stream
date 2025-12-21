@@ -19,8 +19,8 @@ test('pipes readable to writable stream', function () {
     $bytes = $readable->pipeAsync($writable)->wait();
     $result = file_get_contents($dest);
 
-    cleanupFile($source);
-    cleanupFile($dest);
+    cleanupTempFile($source);
+    cleanupTempFile($dest);
 
     expect($result)->toBe('Pipe test content')
         ->and($bytes)->toBe(17)

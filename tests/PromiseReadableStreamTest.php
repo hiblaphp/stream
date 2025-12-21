@@ -11,7 +11,7 @@ test('reads data from file', function () {
 
     $data = $stream->readAsync()->wait();
     $stream->close();
-    cleanupFile($file);
+    cleanupTempFile($file);
 
     expect($data)->toBe('Hello, World!');
 });
@@ -24,7 +24,7 @@ test('reads in chunks', function () {
     $chunk1 = $stream->readAsync(5)->wait();
     $chunk2 = $stream->readAsync(5)->wait();
     $stream->close();
-    cleanupFile($file);
+    cleanupTempFile($file);
 
     expect($chunk1)->toBe('ABCDE')
         ->and($chunk2)->toBe('FGHIJ')
@@ -39,7 +39,7 @@ test('reads line by line', function () {
     $line1 = $stream->readLineAsync()->wait();
     $line2 = $stream->readLineAsync()->wait();
     $stream->close();
-    cleanupFile($file);
+    cleanupTempFile($file);
 
     expect($line1)->toBe("Line 1\n")
         ->and($line2)->toBe("Line 2\n")
@@ -54,7 +54,7 @@ test('reads all content', function () {
 
     $data = $stream->readAllAsync()->wait();
     $stream->close();
-    cleanupFile($file);
+    cleanupTempFile($file);
 
     expect($data)->toBe($content);
 });
@@ -67,7 +67,7 @@ test('returns null at EOF', function () {
     $stream->readAsync()->wait();
     $data = $stream->readAsync()->wait();
     $stream->close();
-    cleanupFile($file);
+    cleanupTempFile($file);
 
     expect($data)->toBeNull();
 });
@@ -80,7 +80,7 @@ test('handles large files', function () {
 
     $data = $stream->readAllAsync()->wait();
     $stream->close();
-    cleanupFile($file);
+    cleanupTempFile($file);
 
     expect(strlen($data))->toBe(50000);
 });
@@ -92,7 +92,7 @@ test('returns null for empty file', function () {
 
     $data = $stream->readAsync()->wait();
     $stream->close();
-    cleanupFile($file);
+    cleanupTempFile($file);
 
     expect($data)->toBeNull();
 });
@@ -105,7 +105,7 @@ test('checks stream states', function () {
     $readable = $stream->isReadable();
     $paused = $stream->isPaused();
     $stream->close();
-    cleanupFile($file);
+    cleanupTempFile($file);
 
     expect($readable)->toBeTrue()
         ->and($paused)->toBeTrue()

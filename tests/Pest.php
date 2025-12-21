@@ -2,6 +2,19 @@
 
 declare(strict_types=1);
 
+use Hibla\EventLoop\Loop;
+
+uses()
+    ->beforeEach(function () {
+        Loop::reset();
+    })
+    ->afterEach(function () {
+        Loop::stop();
+        Loop::reset();
+    })
+    ->in(__DIR__)
+;
+
 function cleanupTempFile(string $file): void
 {
     if (file_exists($file)) {
@@ -67,11 +80,4 @@ function createTempFile(string $content = ''): string
     file_put_contents($file, $content);
 
     return $file;
-}
-
-function cleanupFile(string $file): void
-{
-    if (file_exists($file)) {
-        unlink($file);
-    }
 }

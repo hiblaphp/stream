@@ -14,7 +14,6 @@ beforeEach(function () use ($tempDir) {
     if (! is_dir($tempDir)) {
         mkdir($tempDir);
     }
-    Loop::reset();
 });
 
 afterEach(function () use ($tempDir) {
@@ -27,7 +26,6 @@ afterEach(function () use ($tempDir) {
     if (is_dir($tempDir)) {
         rmdir($tempDir);
     }
-    Loop::reset();
 });
 
 function createSparseFile(string $path, int $size): void

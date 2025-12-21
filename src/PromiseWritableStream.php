@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Hibla\Stream;
 
-use Hibla\Promise\Promise;
 use Hibla\Promise\Interfaces\PromiseInterface;
+use Hibla\Promise\Promise;
 use Hibla\Stream\Exceptions\StreamException;
 use Hibla\Stream\Interfaces\PromiseWritableStreamInterface;
 use Hibla\Stream\Traits\PromiseHelperTrait;

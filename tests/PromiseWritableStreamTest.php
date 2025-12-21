@@ -13,7 +13,7 @@ test('writes data to file', function () {
     $stream->writeAsync('Hello, World!')->wait();
     $stream->endAsync()->wait();
     $content = file_get_contents($file);
-    cleanupFile($file);
+    cleanupTempFile($file);
 
     expect($content)->toBe('Hello, World!');
 });
@@ -29,7 +29,7 @@ test('writes multiple chunks', function () {
     $stream->writeAsync('Third')->wait();
     $stream->endAsync()->wait();
     $content = file_get_contents($file);
-    cleanupFile($file);
+    cleanupTempFile($file);
 
     expect($content)->toBe('First Second Third');
 });
@@ -44,7 +44,7 @@ test('writes line with newline', function () {
     $stream->writeLineAsync('Line 2')->wait();
     $stream->endAsync()->wait();
     $content = file_get_contents($file);
-    cleanupFile($file);
+    cleanupTempFile($file);
 
     expect($content)->toBe("Line 1\nLine 2\n");
 });
@@ -58,7 +58,7 @@ test('ends stream with data', function () {
     $stream->writeAsync('First')->wait();
     $stream->endAsync(' Last')->wait();
     $content = file_get_contents($file);
-    cleanupFile($file);
+    cleanupTempFile($file);
 
     expect($content)->toBe('First Last');
 });
@@ -73,7 +73,7 @@ test('writes large data', function () {
     $stream->writeAsync($content)->wait();
     $stream->endAsync()->wait();
     $written = file_get_contents($file);
-    cleanupFile($file);
+    cleanupTempFile($file);
 
     expect(strlen($written))->toBe(50000);
 });
@@ -87,7 +87,7 @@ test('checks writable stream state', function () {
     $writable = $stream->isWritable();
     $stream->endAsync()->wait();
     $notWritable = ! $stream->isWritable();
-    cleanupFile($file);
+    cleanupTempFile($file);
 
     expect($writable)->toBeTrue()
         ->and($notWritable)->toBeTrue()

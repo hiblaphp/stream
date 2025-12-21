@@ -7,10 +7,6 @@ use Hibla\Stream\ThroughStream;
 use Hibla\Stream\WritableResourceStream;
 
 describe('ThroughStream', function () {
-    beforeEach(function () {
-        Loop::reset();
-    });
-
     test('can be created without transformer', function () {
         $stream = new ThroughStream();
 

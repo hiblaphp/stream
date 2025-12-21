@@ -7,10 +7,6 @@ use Hibla\Stream\DuplexResourceStream;
 use Hibla\Stream\Exceptions\StreamException;
 
 describe('DuplexResourceStream', function () {
-    beforeEach(function () {
-        Loop::reset();
-    });
-
     test('can be created successfully', function () {
         $tempPath = createTempFile();
         $resource = fopen($tempPath, 'w+');

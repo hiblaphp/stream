@@ -9,10 +9,6 @@ use Hibla\Stream\ThroughStream;
 use Hibla\Stream\WritableResourceStream;
 
 describe('CompositeStream', function () {
-    beforeEach(function () {
-        Loop::reset();
-    });
-
     test('creates a duplex stream from separate readable and writable streams', function () {
         [$readSocket, $writeSocket] = createSocketPair();
 
@@ -366,7 +362,7 @@ describe('CompositeStream', function () {
 
         $writable->close();
 
-        usleep(10000); // Small delay
+        usleep(10000);
 
         $readable->close();
 

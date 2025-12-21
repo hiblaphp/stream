@@ -7,10 +7,6 @@ use Hibla\Stream\Exceptions\StreamException;
 use Hibla\Stream\ReadableResourceStream;
 
 describe('ReadableResourceStream', function () {
-    beforeEach(function () {
-        Loop::reset();
-    });
-
     test('can be created from a readable resource', function () {
         $file = createTempFile('test data');
         $resource = fopen($file, 'r');

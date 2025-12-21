@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Hibla\Stream\Handlers;
 
-use Hibla\Promise\Promise;
 use Hibla\Promise\Interfaces\PromiseInterface;
+use Hibla\Promise\Promise;
 
 class ReadLineHandler
 {
