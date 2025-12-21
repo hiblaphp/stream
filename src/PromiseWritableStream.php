@@ -43,11 +43,11 @@ class PromiseWritableStream extends WritableResourceStream implements PromiseWri
     public function writeAsync(string $data): PromiseInterface
     {
         if (! $this->isWritable()) {
-            return $this->createRejectedPromise(new StreamException('Stream is not writable'));
+            return Promise::rejected(new StreamException('Stream is not writable'));
         }
 
         if ($data === '') {
-            return $this->createResolvedPromise(0);
+            return Promise::resolved(0);
         }
 
         /** @var Promise<int> $promise */

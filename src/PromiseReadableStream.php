@@ -50,7 +50,7 @@ class PromiseReadableStream extends ReadableResourceStream implements PromiseRea
     public function readAsync(?int $length = null): PromiseInterface
     {
         if (! $this->isReadable()) {
-            return $this->createRejectedPromise(new StreamException('Stream is not readable'));
+            return Promise::rejected(new StreamException('Stream is not readable'));
         }
 
         if ($this->isEof()) {
@@ -80,7 +80,7 @@ class PromiseReadableStream extends ReadableResourceStream implements PromiseRea
     public function readLineAsync(?int $maxLength = null): PromiseInterface
     {
         if (! $this->isReadable()) {
-            return $this->createRejectedPromise(new StreamException('Stream is not readable'));
+            return Promise::rejected(new StreamException('Stream is not readable'));
         }
 
         $handler = $this->getHandler();
@@ -110,7 +110,7 @@ class PromiseReadableStream extends ReadableResourceStream implements PromiseRea
     public function readAllAsync(int $maxLength = 1048576): PromiseInterface
     {
         if (! $this->isReadable()) {
-            return $this->createRejectedPromise(new StreamException('Stream is not readable'));
+            return Promise::rejected(new StreamException('Stream is not readable'));
         }
 
         $handler = $this->getHandler();
@@ -126,11 +126,11 @@ class PromiseReadableStream extends ReadableResourceStream implements PromiseRea
     public function pipeAsync(WritableStreamInterface $destination, array $options = []): PromiseInterface
     {
         if (! $this->isReadable()) {
-            return $this->createRejectedPromise(new StreamException('Stream is not readable'));
+            return Promise::rejected(new StreamException('Stream is not readable'));
         }
 
         if (! $destination->isWritable()) {
-            return $this->createRejectedPromise(new StreamException('Destination is not writable'));
+            return Promise::rejected(new StreamException('Destination is not writable'));
         }
 
         $endDestination = (bool) ($options['end'] ?? true);

@@ -10,36 +10,6 @@ use Hibla\Promise\Promise;
 trait PromiseHelperTrait
 {
     /**
-     * Create a resolved Promise
-     *
-     * @template TValue
-     * @param TValue $value
-     * @return PromiseInterface<TValue>
-     */
-    private function createResolvedPromise(mixed $value): PromiseInterface
-    {
-        /** @var Promise<TValue> $promise */
-        $promise = new Promise();
-        $promise->resolve($value);
-
-        return $promise;
-    }
-
-    /**
-     * Create a rejected Promise
-     *
-     * @return PromiseInterface<never>
-     */
-    private function createRejectedPromise(\Throwable $reason): PromiseInterface
-    {
-        /** @var Promise<never> $promise */
-        $promise = new Promise();
-        $promise->reject($reason);
-
-        return $promise;
-    }
-
-    /**
      * Create a resolved void Promise
      *
      * @return PromiseInterface<void>
