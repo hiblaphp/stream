@@ -50,69 +50,24 @@ class PromiseWritableStream extends WritableResourceStream implements PromiseWri
             return Promise::resolved(0);
         }
 
-        /** @var Promise<int> $promise */
-        $promise = new Promise();
         $bytesToWrite = \strlen($data);
-        $cancelled = false;
-
         $handler = $this->getHandler();
 
         parent::write($data);
 
-        // Get the buffer size AFTER writing
-        $bufferSizeAfterWrite = $handler->getBufferLength();
-
-        // Set up promise resolution
-        $checkWritten = function () use ($promise, $handler, $bufferSizeAfterWrite, $bytesToWrite, &$cancelled): void {
-            // @phpstan-ignore-next-line php-stan dont know that cancel flag can change in runtime during cancellation
-            if ($cancelled) {
-                return;
-            }
-
-            $currentBufferSize = $handler->getBufferLength();
-            $written = $bufferSizeAfterWrite - $currentBufferSize;
-
-            if ($written >= $bytesToWrite) {
-                $promise->resolve($bytesToWrite);
-            }
-        };
-
-        // Always wait for drain event - data needs to be flushed to disk
-        $drainHandler = function () use ($checkWritten, &$drainHandler, &$errorHandler): void {
-            $checkWritten();
-
-            // Clean up listeners after checking
-            $this->removeListener('drain', $drainHandler);
-            // @phpstan-ignore-next-line argument.type phpstan can infer complex error handling and circular refrence
-            $this->removeListener('error', $errorHandler);
-        };
-
-        $errorHandler = function ($error) use ($promise, &$cancelled, &$drainHandler, &$errorHandler): void {
-            // @phpstan-ignore-next-line php-stan dont know that cancell flag can change in run time during cancellation
-            if ($cancelled) {
-                return;
-            }
-
-            $this->removeListener('drain', $drainHandler);
-            $this->removeListener('error', $errorHandler);
-            $promise->reject($error);
-        };
-
-        $this->on('drain', $drainHandler);
-        $this->on('error', $errorHandler);
-
-        $promise->onCancel(function () use (&$cancelled, &$drainHandler, &$errorHandler): void {
-            $cancelled = true;
-            $this->removeListener('drain', $drainHandler);
-            $this->removeListener('error', $errorHandler);
-        });
-
-        // Check immediately in case drain already happened (buffer already empty)
-        if ($handler->isFullyDrained()) {
-            $promise->resolve($bytesToWrite);
-            $this->removeListener('drain', $drainHandler);
-            $this->removeListener('error', $errorHandler);
+        if ($handler->getBufferLength() < $this->getSoftLimit()) {
+            // @phpstan-ignore-next-line The handler will return the number of bytes written successfully
+            return Promise::resolved($bytesToWrite);
         }
+
+        /** @var Promise<int> $promise */
+        $promise = new Promise();
+        
+        $handler->queueWrite($promise, $bytesToWrite);
+
+        $promise->onCancel(function () use ($promise, $handler): void {
+            $handler->cancelWrite($promise);
+        });
 
         return $promise;
     }
@@ -139,7 +94,7 @@ class PromiseWritableStream extends WritableResourceStream implements PromiseWri
         $cancelled = false;
 
         $finishHandler = function () use ($promise, &$cancelled): void {
-            // @phpstan-ignore-next-line php-stan dont know that cancell flag can change in run time during cancellation
+            // @phpstan-ignore-next-line promise can be cancelled at runtime
             if ($cancelled) {
                 return;
             }
@@ -147,7 +102,7 @@ class PromiseWritableStream extends WritableResourceStream implements PromiseWri
         };
 
         $errorHandler = function ($error) use ($promise, &$cancelled, $finishHandler): void {
-            // @phpstan-ignore-next-line php-stan dont know that cancell flag can change in run time during cancellation
+            // @phpstan-ignore-next-line promise can be cancelled at runtime
             if ($cancelled) {
                 return;
             }
@@ -164,7 +119,6 @@ class PromiseWritableStream extends WritableResourceStream implements PromiseWri
             $this->removeListener('error', $errorHandler);
         });
 
-        // Call end on parent
         if ($data !== null && $data !== '') {
             $this->writeAsync($data)->then(function () {
                 parent::end();

@@ -6,6 +6,8 @@ namespace Hibla\Stream\Handlers;
 
 use Hibla\EventLoop\Loop;
 use Hibla\EventLoop\ValueObjects\StreamWatcher;
+use Hibla\Promise\Interfaces\PromiseInterface;
+use Hibla\Promise\Promise;
 use Hibla\Stream\Exceptions\StreamException;
 
 class WritableStreamHandler
@@ -13,6 +15,11 @@ class WritableStreamHandler
     private string $writeBuffer = '';
     private ?string $watcherId = null;
     private int $totalWritten = 0;
+
+    /** 
+     * @var array<int, array{promise: Promise<int>, bytes: int}> 
+     */
+    private array $writeQueue = [];
 
     /**
      * @param resource $resource
@@ -26,8 +33,7 @@ class WritableStreamHandler
         private $emitCallback,
         private $closeCallback,
         private $isEndingCallback
-    ) {
-    }
+    ) {}
 
     public function getBufferLength(): int
     {
@@ -44,6 +50,28 @@ class WritableStreamHandler
         $this->writeBuffer = '';
     }
 
+    /**
+     * @param Promise<int> $promise 
+     * @param int $bytesToWrite
+     */
+    public function queueWrite(Promise $promise, int $bytesToWrite): void
+    {
+        $this->writeQueue[] = ['promise' => $promise, 'bytes' => $bytesToWrite];
+    }
+
+    /**
+     * @param PromiseInterface<int> $promise
+     */
+    public function cancelWrite(PromiseInterface $promise): void
+    {
+        foreach ($this->writeQueue as $index => $item) {
+            if ($item['promise'] === $promise) {
+                unset($this->writeQueue[$index]);
+                return;
+            }
+        }
+    }
+
     public function startWatching(bool $writable, bool $ending, bool $closed): void
     {
         if ($this->watcherId !== null || $closed || $this->writeBuffer === '') {
@@ -56,7 +84,7 @@ class WritableStreamHandler
 
         $this->watcherId = Loop::addStreamWatcher(
             $this->resource,
-            fn () => $this->handleWritable(),
+            fn() => $this->handleWritable(),
             StreamWatcher::TYPE_WRITE
         );
     }
@@ -79,7 +107,12 @@ class WritableStreamHandler
 
         if ($written === false || $written === 0) {
             $error = new StreamException('Failed to write to stream');
+
+
             ($this->emitCallback)('error', $error);
+
+            $this->rejectAllPending($error);
+
             ($this->closeCallback)();
 
             return;
@@ -90,17 +123,17 @@ class WritableStreamHandler
         $this->totalWritten += $written;
         $isNowBelowLimit = \strlen($this->writeBuffer) < $this->softLimit;
 
-        // Emit drain when buffer goes below soft limit
-        if ($wasAboveLimit && $isNowBelowLimit) {
+        // Check if we crossed the threshold (Backpressure release)
+        if (($wasAboveLimit && $isNowBelowLimit) || $this->writeBuffer === '') {
             ($this->emitCallback)('drain');
+
+            // RESOLVE QUEUE: Space is available, notify waiting promises
+            $this->resolvePending();
         }
 
-        // Check if fully drained
         if ($this->writeBuffer === '') {
             $this->stopWatching();
-            ($this->emitCallback)('drain');
 
-            // Check if we're ending using the callback
             if (($this->isEndingCallback)()) {
                 ($this->emitCallback)('finish');
             }
@@ -115,5 +148,37 @@ class WritableStreamHandler
     public function getTotalWritten(): int
     {
         return $this->totalWritten;
+    }
+
+    public function rejectAllPending(\Throwable $error): void
+    {
+        if (\count($this->writeQueue) === 0) {
+            return;
+        }
+
+        $queue = $this->writeQueue;
+        $this->writeQueue = [];
+
+        foreach ($queue as $item) {
+            if (!$item['promise']->isCancelled()) {
+                $item['promise']->reject($error);
+            }
+        }
+    }
+
+    private function resolvePending(): void
+    {
+        if (\count($this->writeQueue) === 0) {
+            return;
+        }
+
+        $queue = $this->writeQueue;
+        $this->writeQueue = [];
+
+        foreach ($queue as $item) {
+            if (!$item['promise']->isCancelled()) {
+                $item['promise']->resolve($item['bytes']);
+            }
+        }
     }
 }
