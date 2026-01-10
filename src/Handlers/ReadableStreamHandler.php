@@ -166,6 +166,7 @@ class ReadableStreamHandler
             }
 
             ($this->emitCallback)('end');
+            ($this->closeCallback)();
 
             return;
         }
