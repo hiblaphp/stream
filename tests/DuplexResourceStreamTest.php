@@ -33,7 +33,6 @@ describe('DuplexResourceStream', function () {
         });
 
         $stream->on('drain', function () use ($stream, $resource) {
-            // After write is drained, seek and read
             fseek($resource, 0, SEEK_SET);
             $stream->resume();
         });
@@ -91,7 +90,6 @@ describe('DuplexResourceStream', function () {
         });
 
         $stream->on('drain', function () use ($stream, $resource) {
-            // After writes are drained, seek and read
             fseek($resource, 0, SEEK_SET);
             $stream->resume();
         });

@@ -5,21 +5,22 @@ declare(strict_types=1);
 namespace Hibla\Stream\Handlers;
 
 use Hibla\EventLoop\Loop;
-use Hibla\EventLoop\ValueObjects\StreamWatcher;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
 use Hibla\Stream\Exceptions\StreamException;
 
 class WritableStreamHandler
 {
-    private string $writeBuffer = '';
-    private ?string $watcherId = null;
-    private int $totalWritten = 0;
-
     /** 
      * @var array<int, array{promise: Promise<int>, bytes: int}> 
      */
     private array $writeQueue = [];
+
+    private string $writeBuffer = '';
+
+    private int $totalWritten = 0;
+
+    private ?string $watcherId = null;
 
     /**
      * @param resource $resource
@@ -82,17 +83,16 @@ class WritableStreamHandler
             return;
         }
 
-        $this->watcherId = Loop::addStreamWatcher(
+        $this->watcherId = Loop::addWriteWatcher(
             $this->resource,
             fn() => $this->handleWritable(),
-            StreamWatcher::TYPE_WRITE
         );
     }
 
     public function stopWatching(): void
     {
         if ($this->watcherId !== null) {
-            Loop::removeStreamWatcher($this->watcherId);
+            Loop::removeWriteWatcher($this->watcherId);
             $this->watcherId = null;
         }
     }

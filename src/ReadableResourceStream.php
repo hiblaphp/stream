@@ -15,11 +15,15 @@ class ReadableResourceStream extends EventEmitter implements ReadableStreamInter
     /** @var resource|null The underlying stream resource. */
     private $resource;
 
-    private bool $readable = true;
-    private bool $paused = true;
-    private bool $closed = false;
-    private bool $eof = false;
     private int $chunkSize;
+
+    private bool $readable = true;
+
+    private bool $paused = true;
+
+    private bool $closed = false;
+
+    private bool $eof = false;
 
     private ReadableStreamHandler $handler;
 

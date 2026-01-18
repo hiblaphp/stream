@@ -5,18 +5,18 @@ declare(strict_types=1);
 namespace Hibla\Stream\Handlers;
 
 use Hibla\EventLoop\Loop;
-use Hibla\EventLoop\ValueObjects\StreamWatcher;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
 use Hibla\Stream\Exceptions\StreamException;
 
 class ReadableStreamHandler
 {
-    private string $buffer = '';
-    private ?string $watcherId = null;
-
     /** @var array<array{resolve: callable(string|null): void, reject: callable(\Throwable): void, length: int, promise: PromiseInterface<string|null>}> */
     private array $readQueue = [];
+
+    private string $buffer = '';
+
+    private ?string $watcherId = null;
 
     /**
      * @param resource $resource
@@ -36,8 +36,7 @@ class ReadableStreamHandler
         private $pauseCallback,
         private $isPausedCallback,
         private $hasListenersCallback
-    ) {
-    }
+    ) {}
 
     public function getBuffer(): string
     {
@@ -70,8 +69,8 @@ class ReadableStreamHandler
     public function queueRead(?int $length, Promise $promise): void
     {
         $this->readQueue[] = [
-            'resolve' => fn (string|null $value) => $promise->resolve($value),
-            'reject' => fn (\Throwable $reason) => $promise->reject($reason),
+            'resolve' => fn(string|null $value) => $promise->resolve($value),
+            'reject' => fn(\Throwable $reason) => $promise->reject($reason),
             'length' => $length ?? $this->chunkSize,
             'promise' => $promise,
         ];
@@ -111,17 +110,16 @@ class ReadableStreamHandler
             return;
         }
 
-        $this->watcherId = Loop::addStreamWatcher(
+        $this->watcherId = Loop::addReadWatcher(
             $this->resource,
-            fn () => $this->handleReadable(),
-            StreamWatcher::TYPE_READ
+            fn() => $this->handleReadable(),
         );
     }
 
     public function stopWatching(): void
     {
         if ($this->watcherId !== null) {
-            Loop::removeStreamWatcher($this->watcherId);
+            Loop::removeReadWatcher($this->watcherId);
             $this->watcherId = null;
         }
     }
