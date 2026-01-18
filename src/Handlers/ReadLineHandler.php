@@ -89,7 +89,7 @@ class ReadLineHandler
                 }
 
                 // Check if exceeded max length
-                if (strlen($lineBuffer) >= $maxLength) {
+                if (\strlen($lineBuffer) >= $maxLength) {
                     $line = substr($lineBuffer, 0, $maxLength);
                     $remaining = substr($lineBuffer, $maxLength);
 

@@ -14,9 +14,13 @@ use Hibla\Stream\Interfaces\WritableStreamInterface;
 class ThroughStream extends EventEmitter implements DuplexStreamInterface
 {
     private bool $readable = true;
+
     private bool $writable = true;
+
     private bool $closed = false;
+
     private bool $paused = false;
+    
     private bool $ending = false;
 
     /**

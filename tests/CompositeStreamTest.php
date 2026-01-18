@@ -39,7 +39,6 @@ describe('CompositeStream', function () {
             Loop::stop();
         });
 
-        // Write to socket2 so it can be read from socket1
         fwrite($socket2, 'Hello from composite!');
 
         $composite->resume();
@@ -104,8 +103,6 @@ describe('CompositeStream', function () {
         $composite2->on('data', function ($data) use (&$received1, &$messagesReceived, $composite2) {
             $received1 .= $data;
             $messagesReceived++;
-
-            // Reply back
             $composite2->write('Hello from side 2!');
         });
 
@@ -120,8 +117,6 @@ describe('CompositeStream', function () {
 
         $composite2->resume();
         $composite1->resume();
-
-        // Start the communication
         $composite1->write('Hello from side 1!');
 
         Loop::run();
@@ -375,7 +370,7 @@ describe('CompositeStream', function () {
         [$socket1, $socket2] = createSocketPair();
 
         $readable = new ReadableResourceStream($socket1);
-        $through = new ThroughStream(fn ($data) => strtoupper($data));
+        $through = new ThroughStream(fn($data) => strtoupper($data));
 
         $composite = new CompositeStream($readable, $through);
 

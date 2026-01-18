@@ -24,45 +24,30 @@ function cleanupTempFile(string $file): void
 
 function createSocketPair(): array
 {
-    if (stripos(PHP_OS, 'WIN') === 0) {
-        $server = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
-        if (! $server) {
-            throw new RuntimeException("Failed to create server socket: $errstr");
-        }
+    $server = stream_socket_server('tcp://127.0.0.1:0', $errno, $errstr);
+    if (! $server) {
+        throw new RuntimeException("Failed to create server socket: $errstr");
+    }
 
-        $serverAddress = stream_socket_get_name($server, false);
+    $serverAddress = stream_socket_get_name($server, false);
 
-        $client = stream_socket_client("tcp://$serverAddress", $errno, $errstr, 5);
-        if (! $client) {
-            fclose($server);
+    $client = stream_socket_client("tcp://$serverAddress", $errno, $errstr, 5);
 
-            throw new RuntimeException("Failed to create client socket: $errstr");
-        }
-
-        $accepted = stream_socket_accept($server, 5);
-        if (! $accepted) {
-            fclose($client);
-            fclose($server);
-
-            throw new RuntimeException('Failed to accept connection');
-        }
-
+    if (! $client) {
         fclose($server);
-
-        return [$client, $accepted];
+        throw new RuntimeException("Failed to create client socket: $errstr");
     }
 
-    $pair = stream_socket_pair(
-        STREAM_PF_UNIX,
-        STREAM_SOCK_STREAM,
-        STREAM_IPPROTO_IP
-    );
-
-    if ($pair === false) {
-        throw new RuntimeException('Failed to create socket pair');
+    $accepted = stream_socket_accept($server, 5);
+    if (! $accepted) {
+        fclose($client);
+        fclose($server);
+        throw new RuntimeException('Failed to accept connection');
     }
 
-    return $pair;
+    fclose($server);
+
+    return [$client, $accepted];
 }
 
 function closeSocketPair(array $pair): void
