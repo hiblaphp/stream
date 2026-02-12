@@ -198,8 +198,8 @@ class WritableResourceStream extends EventEmitter implements WritableStreamInter
                     $this->close();
                 }
             },
-            fn () => $this->close(),
-            fn () => $this->ending
+            $this->close(...),
+            $this->isEnding(...)
         );
     }
 

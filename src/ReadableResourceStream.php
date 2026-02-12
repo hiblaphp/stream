@@ -260,11 +260,11 @@ class ReadableResourceStream extends EventEmitter implements ReadableStreamInter
                     $this->eof = true;
                 }
             },
-            fn() => $this->close(),
+            $this->close(...),
             fn() => \is_resource($resource) && feof($resource),
-            fn() => $this->pause(),
-            fn() => $this->paused,
-            fn(string $event) => $this->hasListeners($event)
+            $this->pause(...),
+            $this->isPaused(...),
+            $this->hasListeners(...)
         );
     }
 
