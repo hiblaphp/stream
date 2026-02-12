@@ -56,7 +56,6 @@ class PromiseWritableStream extends WritableResourceStream implements PromiseWri
         parent::write($data);
 
         if ($handler->getBufferLength() < $this->getSoftLimit()) {
-            // @phpstan-ignore-next-line The handler will return the number of bytes written successfully
             return Promise::resolved($bytesToWrite);
         }
 
