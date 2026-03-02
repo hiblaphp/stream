@@ -8,12 +8,9 @@ use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
 use Hibla\Stream\Exceptions\StreamException;
 use Hibla\Stream\Interfaces\PromiseWritableStreamInterface;
-use Hibla\Stream\Traits\PromiseHelperTrait;
 
 class PromiseWritableStream extends WritableResourceStream implements PromiseWritableStreamInterface
 {
-    use PromiseHelperTrait;
-
     /**
      * Creates a promise-based writable stream.
      *
@@ -85,7 +82,7 @@ class PromiseWritableStream extends WritableResourceStream implements PromiseWri
     public function endAsync(?string $data = null): PromiseInterface
     {
         if ($this->isEnding() || ! $this->isWritable()) {
-            return $this->createResolvedVoidPromise();
+            return Promise::resolved();
         }
 
         /** @var Promise<void> $promise */

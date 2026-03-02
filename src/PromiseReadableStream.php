@@ -11,12 +11,9 @@ use Hibla\Stream\Handlers\ReadAllHandler;
 use Hibla\Stream\Handlers\ReadLineHandler;
 use Hibla\Stream\Interfaces\PromiseReadableStreamInterface;
 use Hibla\Stream\Interfaces\WritableStreamInterface;
-use Hibla\Stream\Traits\PromiseHelperTrait;
 
 class PromiseReadableStream extends ReadableResourceStream implements PromiseReadableStreamInterface
 {
-    use PromiseHelperTrait;
-
     private ReadLineHandler $lineHandler;
     private ReadAllHandler $allHandler;
 
@@ -54,7 +51,7 @@ class PromiseReadableStream extends ReadableResourceStream implements PromiseRea
         }
 
         if ($this->isEof()) {
-            return $this->createResolvedStringOrNullPromise(null);
+            return Promise::resolved(null);
         }
 
         /** @var Promise<string|null> $promise */
@@ -86,7 +83,7 @@ class PromiseReadableStream extends ReadableResourceStream implements PromiseRea
         $handler = $this->getHandler();
 
         if ($this->isEof() && $handler->getBuffer() === '') {
-            return $this->createResolvedStringOrNullPromise(null);
+            return Promise::resolved(null);
         }
 
         $maxLen = $maxLength ?? $this->getChunkSize();
@@ -96,7 +93,7 @@ class PromiseReadableStream extends ReadableResourceStream implements PromiseRea
         if ($line !== null) {
             $handler->setBuffer($buffer);
 
-            return $this->createResolvedStringOrNullPromise($line);
+            return Promise::resolved($line);
         }
 
         $handler->clearBuffer();
