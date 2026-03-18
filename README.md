@@ -1,4 +1,3 @@
-````markdown
 # Hibla Stream
 
 **Non-blocking, event-driven streams for PHP with promise-based I/O and automatic backpressure.**
@@ -942,4 +941,3 @@ composer install
 ## License
 
 MIT License. See [LICENSE](./LICENSE) for more information.
-````
