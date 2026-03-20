@@ -2,60 +2,64 @@
 
 **Non-blocking, event-driven streams for PHP with promise-based I/O and automatic backpressure.**
 
-`hiblaphp/stream` provides readable, writable, and duplex stream abstractions built on top of the Hibla event loop. Streams register I/O watchers with the event loop and let data flow cooperatively — a read or write never blocks the thread. Backpressure is tracked automatically: when a writable buffer fills, `write()` returns `false` and the `drain` event signals when it is safe to continue. Pipe chains wire all of this together without any manual coordination.
+`hiblaphp/stream` provides readable, writable, and duplex stream abstractions built
+on top of the Hibla event loop. Streams register I/O watchers with the event loop and
+let data flow cooperatively — a read or write never blocks the thread. Backpressure is
+tracked automatically: when a writable buffer fills, `write()` returns `false` and the
+`drain` event signals when it is safe to continue. Pipe chains wire all of this
+together without any manual coordination.
 
 [![Latest Release](https://img.shields.io/github/release/hiblaphp/stream.svg?style=flat-square)](https://github.com/hiblaphp/stream/releases)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](./LICENSE)
 
 ---
 
-## Introduction
-
-PHP's built-in I/O is synchronous. `fread()` blocks until data arrives. `fwrite()` blocks until the kernel accepts the data. For a single file or socket this is fine — but the moment you are handling multiple streams concurrently, blocking on any one of them stalls everything else. The event loop cannot fire timers, cannot resume Fibers, cannot process other I/O until the blocking call returns.
-
-The solution is to hand stream I/O to the event loop entirely. Instead of calling `fread()` blindly and waiting, you register a read watcher and supply a callback. The event loop monitors all active streams at once — using `stream_select()` or `ext-uv` depending on the active driver — and wakes only when data is actually available, then calls `fread()` immediately, knowing it will return without blocking. No polling, no wasted cycles, no stalled loop.
-
-Hibla streams are that abstraction. A `ReadableResourceStream` registers a read watcher with the event loop and emits `data` events when the underlying resource is ready. A `WritableResourceStream` buffers outgoing data and registers a write watcher to drain the buffer asynchronously without blocking. When you use the promise-based API — `readAsync()`, `writeAsync()`, `pipeAsync()` — the stream suspends the current Fiber at the `await()` point and resumes it exactly when the I/O completes, so the rest of your code reads top to bottom like ordinary synchronous PHP while the event loop handles everything underneath.
-
-This library is the foundation that higher-level Hibla components build on. `hiblaphp/socket` exposes TCP and UDP connections as duplex streams. `hiblaphp/dns` reads and writes over DNS sockets using the same stream primitives. `hiblaphp/parallel` uses promise base stream api and fibers to orchestrate ipc beetween parent process and child process. If you are using any of these packages you are already using `hiblaphp/stream` — understanding it directly gives you full visibility into how data moves through the entire Hibla stack.
-
----
-
 ## Contents
 
-### Fundamentals
+**Getting started**
 - [Installation](#installation)
+- [Introduction](#introduction)
 - [Stream Types](#stream-types)
 - [Stream Events](#stream-events)
 - [Creating Streams](#creating-streams)
 
-### Readable Streams
+**Stream types**
 - [Readable Streams](#readable-streams)
+  - [Pausing and resuming](#pausing-and-resuming)
+  - [Seeking and telling](#seeking-and-telling)
 - [Writable Streams](#writable-streams)
-- [Backpressure](#backpressure)
-
-### Piping and Transforms
+  - [Backpressure](#backpressure)
 - [Piping Streams](#piping-streams)
-- [Through Streams](#through-streams)
-
-### Advanced Stream Types
+  - [Through Streams](#through-streams)
 - [Duplex Streams](#duplex-streams)
 - [Composite Streams](#composite-streams)
 
-### Promise-Based API
+**Promise-based API**
 - [Promise-Based API](#promise-based-api)
+  - [Reading data](#reading-data)
+  - [Reading exact byte counts](#reading-exact-byte-counts)
+  - [Writing data](#writing-data)
+  - [Piping with `pipeAsync()`](#piping-with-pipeasync)
+  - [Cancellation](#cancellation)
 
-### I/O and Platform
+**I/O and platform**
 - [Standard I/O](#standard-io)
 - [Platform Notes](#platform-notes)
 
-### Reference
-- [Resource Cleanup and Destructors](#resource-cleanup-and-destructors)
+**Reference**
+- [Stream Lifecycle and Events](#stream-lifecycle-and-events)
+  - [Readable stream lifecycle](#readable-stream-lifecycle)
+  - [Writable stream lifecycle](#writable-stream-lifecycle)
+  - [Pipe event flow](#pipe-event-flow)
+  - [ThroughStream event flow](#throughstream-event-flow)
+  - [CompositeStream and DuplexResourceStream events](#compositestream-and-duplexresourcestream-events)
+  - [Error event behaviour](#error-event-behaviour)
 - [No-Op Behaviour](#no-op-behaviour)
+- [Resource Cleanup and Destructors](#resource-cleanup-and-destructors)
 - [Events Reference](#events-reference)
 - [API Reference](#api-reference)
 
-### Meta
+**Meta**
 - [Development](#development)
 - [Credits](#credits)
 - [License](#license)
@@ -63,7 +67,6 @@ This library is the foundation that higher-level Hibla components build on. `hib
 ---
 
 ## Installation
-
 ```bash
 composer require hiblaphp/stream
 ```
@@ -73,6 +76,39 @@ composer require hiblaphp/stream
 - `hiblaphp/event-loop`
 - `hiblaphp/promise`
 - `evenement/evenement`
+
+---
+
+## Introduction
+
+PHP's built-in I/O is synchronous. `fread()` blocks until data arrives. `fwrite()`
+blocks until the kernel accepts the data. For a single file or socket this is fine —
+but the moment you are handling multiple streams concurrently, blocking on any one of
+them stalls everything else. The event loop cannot fire timers, cannot resume Fibers,
+cannot process other I/O until the blocking call returns.
+
+The solution is to hand stream I/O to the event loop entirely. Instead of calling
+`fread()` blindly and waiting, you register a read watcher and supply a callback. The
+event loop monitors all active streams at once — using `stream_select()` or `ext-uv`
+depending on the active driver — and wakes only when data is actually available, then
+calls `fread()` immediately, knowing it will return without blocking.
+
+Hibla streams are that abstraction. A `ReadableResourceStream` registers a read
+watcher with the event loop and emits `data` events when the underlying resource is
+ready. A `WritableResourceStream` buffers outgoing data and registers a write watcher
+to drain the buffer asynchronously without blocking. When you use the promise-based
+API — `readAsync()`, `writeAsync()`, `pipeAsync()` — the stream suspends the current
+Fiber at the `await()` point and resumes it exactly when the I/O completes, so the
+rest of your code reads top to bottom like ordinary synchronous PHP while the event
+loop handles everything underneath.
+
+This library is the foundation that higher-level Hibla components build on.
+`hiblaphp/socket` exposes TCP and UDP connections as duplex streams. `hiblaphp/dns`
+reads and writes over DNS sockets using the same stream primitives. `hiblaphp/parallel`
+uses the promise-based stream API and Fibers to orchestrate IPC between parent and
+child processes. If you are using any of these packages you are already using
+`hiblaphp/stream` — understanding it directly gives you full visibility into how data
+moves through the entire Hibla stack.
 
 ---
 
@@ -92,469 +128,47 @@ composer require hiblaphp/stream
 
 ## Stream Events
 
-Every stream class in Hibla emits a defined set of events at precise lifecycle points. Understanding *when* each event fires — and in what order — is the key to writing correct stream code.
-
----
-
-### Readable stream lifecycle
-
-A `ReadableResourceStream` always starts **paused**. No watcher is registered, no data flows, and no events fire until you explicitly call `resume()` or attach a `data` listener.
-```
-  new ReadableResourceStream($resource)
-         │
-         ▼
-    ┌─────────┐
-    │  PAUSED │  ◄─── pause() called (or initial state)
-    └────┬────┘
-         │ resume()
-         ▼
-    ┌─────────┐
-    │ FLOWING │  ◄─── read watcher registered with event loop
-    └────┬────┘
-         │ data arrives
-         ├──────────────── emit('data', $chunk)    ← repeats each read
-         │
-         │ pause() called
-         ├──────────────── emit('pause')
-         │                 read watcher removed
-         │
-         │ EOF reached
-         ├──────────────── emit('end')
-         │                 emit('close')           ← always follows 'end'
-         │                 resource closed
-         │
-         │ read error
-         └──────────────── emit('error', $e)
-                           emit('close')           ← always follows 'error'
-                           resource closed
-```
-
-**Important:** `end` and `close` are always emitted in that order on EOF. A read error skips `end` and goes directly to `close`. After `close`, all listeners are removed — any listener attached after `close` will never fire.
-```php
-$stream = new ReadableResourceStream(fopen('/var/log/app.log', 'rb'));
-
-// Attach listeners BEFORE resume() — nothing flows yet
-$stream->on('data', function (string $chunk) {
-    echo $chunk;
-});
-
-$stream->on('end', function () {
-    // EOF reached — no more 'data' events will follow
-    echo "Done reading\n";
-});
-
-$stream->on('close', function () {
-    // Resource is freed — always fires after 'end' or 'error'
-    echo "Stream closed\n";
-});
-
-$stream->on('error', function (\Throwable $e) {
-    // On error: 'close' fires immediately after this, not 'end'
-    echo "Read error: " . $e->getMessage() . "\n";
-});
-
-// This is the trigger — no events fire until here
-$stream->resume();
-```
-
-### Writable stream lifecycle
-
-A `WritableResourceStream` is ready immediately — no `resume()` needed. `write()` can be called as soon as the stream is constructed.
-```
-  new WritableResourceStream($resource)
-         │
-         ▼
-    ┌──────────┐
-    │ WRITABLE │
-    └────┬─────┘
-         │ write($data) — data buffered, write watcher registered
-         │
-         │  buffer < softLimit  ──► write() returns true   (keep writing)
-         │  buffer >= softLimit ──► write() returns false  (stop writing)
-         │
-         │ write watcher drains the buffer
-         ├──────────────── emit('drain')     ← safe to write again
-         │
-         │ end() called
-         ├──────────────── emit('finish')    ← all buffered data flushed
-         │                 emit('close')     ← resource freed
-         │
-         │ write() on closed stream
-         └──────────────── emit('error', $e) ← returns false, no throw
-```
-
-Timeline of a typical write-then-end sequence:
-```
- write()─┐           drain─┐        end()─┐     finish─┐  close─┐
-         │                 │              │            │         │
-─────────▼─────────────────▼──────────────▼────────────▼─────────▼────►
-         buffer fills    buffer drains  no more     buffer     resource
-         (returns false) (returns true) writes      empty      freed
-```
-```php
-$stream = new WritableResourceStream(fopen('/tmp/output.log', 'wb'));
-
-$stream->on('drain', function () {
-    // Buffer dropped below soft limit — safe to resume writing
-    echo "Drained, can write again\n";
-});
-
-$stream->on('finish', function () {
-    // end() was called and all buffered data is now flushed
-    echo "All data written\n";
-});
-
-$stream->on('close', function () {
-    // Always fires after 'finish' (or immediately on close())
-    echo "Stream closed\n";
-});
-
-$stream->on('error', function (\Throwable $e) {
-    // Fires if write() is called on a closed stream, or on a write failure
-    echo "Write error: " . $e->getMessage() . "\n";
-});
-
-$stream->write("Hello\n");
-$stream->end("Goodbye\n"); // triggers: finish → close
-```
-
-### Backpressure — the `drain` event
-
-`drain` is the most commonly misunderstood event. It signals that the internal write buffer has dropped below the soft limit after previously being full. The correct pattern is to check the return value of `write()` and wait for `drain` before continuing.
-```
-  Consumer                 WritableResourceStream            Kernel buffer
-     │                            │                               │
-     │  write("chunk 1")          │                               │
-     ├──────────────────────────► │  buffer: 10 KB (< 64 KB)     │
-     │  ◄── true (keep going)     │                               │
-     │                            │                               │
-     │  write("chunk 2")          │                               │
-     ├──────────────────────────► │  buffer: 40 KB (< 64 KB)     │
-     │  ◄── true                  │                               │
-     │                            │                               │
-     │  write("chunk 3")          │                               │
-     ├──────────────────────────► │  buffer: 70 KB (>= 64 KB)    │
-     │  ◄── FALSE  ◄──────────────│  STOP WRITING                 │
-     │                            │                               │
-     │  [wait for drain]          │ ──────────────────────────── ►│ fwrite()
-     │                            │  buffer: 15 KB (< 64 KB)      │
-     │  ◄──── emit('drain') ◄─────│  RESUME                       │
-     │                            │                               │
-     │  write("chunk 4")          │                               │
-     ├──────────────────────────► │                               │
-```
-```php
-use Hibla\Stream\WritableResourceStream;
-
-$socket   = stream_socket_client('tcp://example.com:9000');
-$writable = new WritableResourceStream($socket, softLimit: 65536);
-
-function pump(string $data, WritableResourceStream $writable): void
-{
-    $canContinue = $writable->write($data);
-
-    if ($canContinue === false) {
-        // Buffer is full — do NOT call write() again until 'drain' fires
-        $writable->once('drain', function () use ($writable) {
-            pump(getNextChunk(), $writable);
-        });
-    } else {
-        // Buffer has room — schedule the next chunk
-        pump(getNextChunk(), $writable);
-    }
-}
-```
-
-> `pipe()` and `pipeAsync()` handle all of this automatically. Manual backpressure management is only needed when calling `write()` directly.
-
-### Pipe — coordinated event flow
-
-`pipe()` wires a readable stream to a writable stream and coordinates `data`, `drain`, `end`, and `close` events between them automatically. This is the full event chain:
-```
-  ReadableResourceStream              WritableResourceStream
-         │                                    │
-         │  (pipe() calls resume() internally)│
-         │                                    │
-  emit('data', $chunk) ──────────────────────►│ write($chunk)
-         │                                    │
-         │             [buffer not full]       │
-         │         write() returns true ◄──────│
-         │  keep flowing                       │
-         │                                    │
-  emit('data', $chunk) ──────────────────────►│ write($chunk)
-         │                                    │
-         │             [buffer now full]       │
-         │         write() returns false ◄─────│
-  pause() ◄───────────────────────────────────│ STOP SOURCE
-         │                                    │
-         │  [event loop drains the buffer]     │
-         │                                    │  ◄── fwrite() to kernel
-         │                           emit('drain') ──────────────────┐
-         │  ◄── resume() ─────────────────────┘                      │
-         │  [flowing again]                                           │
-         │                                    │                      │
-  emit('end') ───────────────────────────────►│ end()                │
-         │                              emit('finish')               │
-         │                              emit('close')                │
-```
-```php
-use Hibla\Stream\ReadableResourceStream;
-use Hibla\Stream\WritableResourceStream;
-use Hibla\Stream\ThroughStream;
-
-$source = new ReadableResourceStream(fopen('/tmp/input.bin', 'rb'));
-$dest   = new WritableResourceStream(fopen('/tmp/output.bin', 'wb'));
-
-// Attach lifecycle listeners before pipe() calls resume()
-$dest->on('finish', fn() => echo "Transfer complete\n");
-$dest->on('error',  fn($e) => echo "Write error: " . $e->getMessage() . "\n");
-
-// pipe() returns the destination for chaining
-$source->pipe($dest);
-
-// Composing a pipeline — each pipe() call returns the next destination
-$source
-    ->pipe(new ThroughStream(fn($d) => gzencode($d)))   // transform
-    ->pipe(new WritableResourceStream(fopen('/tmp/out.gz', 'wb')));
-```
-
-Pass `['end' => false]` to keep the destination open after the source ends — useful when sequentially piping multiple sources to the same destination:
-```php
-// Source A's 'end' will NOT call dest->end()
-$sourceA->pipe($dest, ['end' => false]);
-$sourceA->on('end', function () use ($sourceB, $dest) {
-    // Pipe source B — this one WILL close dest when finished
-    $sourceB->pipe($dest);
-});
-```
-
-### Error event — behaviour and ownership
-
-Both readable and writable streams follow the same rule: **an `error` event is always followed by `close`**. The stream closes itself after emitting `error`. You do not need to call `close()` manually inside an error handler.
-```
-  Readable error sequence          Writable error sequence
-  ────────────────────────         ────────────────────────
-  fread() fails                    write() called on closed stream
-       │                                 │
-  emit('error', $e)                emit('error', $e)  ← write() returns false
-       │                                 │
-  emit('close')                    [stream already closed — no second close]
-       │
-  removeAllListeners()
-```
-```php
-// WRONG — calling close() inside an error handler is a no-op
-// but harmless since close() is idempotent
-$stream->on('error', function (\Throwable $e) use ($stream) {
-    echo "Error: " . $e->getMessage() . "\n";
-    $stream->close(); // no-op — stream is already closing
-});
-
-// CORRECT — just handle the error; close fires on its own
-$stream->on('error', function (\Throwable $e) {
-    echo "Error: " . $e->getMessage() . "\n";
-    // recovery logic here if needed
-});
-
-$stream->on('close', function () {
-    // This fires after every error — use it for cleanup
-    cleanupResources();
-});
-```
-
-> **Always attach an `error` listener.** An unhandled `error` event on an `EventEmitter` propagates and may terminate your process.
-
-### `ThroughStream` event flow
-
-`ThroughStream` is both a writable (receives `write()` calls) and a readable (emits `data` events). Data written in comes out the other side, optionally transformed. Unlike resource-backed streams, it has no I/O watcher — the event loop is not involved.
-```
-  Upstream (writes to ThroughStream)    ThroughStream    Downstream (reads from ThroughStream)
-         │                                   │                       │
-         │  write($chunk)                    │                       │
-         ├──────────────────────────────────►│                       │
-         │                           [transform($chunk)]             │
-         │                            emit('data', $result) ────────►│
-         │                                   │                       │
-         │  write returns:                   │                       │
-         │   true  if not paused             │                       │
-         │   false if paused  ◄──────────────│                       │
-         │                                   │                       │
-         │  end($final)                      │                       │
-         ├──────────────────────────────────►│                       │
-         │                            emit('data', $transformed)     │
-         │                            emit('end')                    │
-         │                            emit('finish')                 │
-         │                            emit('close')                  │
-         │                                   │                       │
-         │  transformer throws               │                       │
-         │                            emit('error', $e)              │
-         │                            emit('close')     ─────────────┘
-```
-```php
-use Hibla\Stream\ThroughStream;
-
-// Transform: uppercase every chunk
-$upper = new ThroughStream(fn(string $data) => strtoupper($data));
-
-// Spy: inspect mid-pipe without modifying data
-$spy = new ThroughStream(function (string $data) {
-    fwrite(STDERR, sprintf("[spy] %d bytes\n", strlen($data)));
-    return $data; // must return data to pass it through
-});
-
-$source
-    ->pipe($spy)
-    ->pipe($upper)
-    ->pipe($destination);
-```
-
-If the transformer callable throws, `ThroughStream` emits `error` and then `close` — the stream is permanently closed. Design transformers to be exception-safe or catch errors internally.
-
-### `CompositeStream` and `DuplexResourceStream` — forwarded events
-
-Both composite and duplex streams are wrappers around two underlying streams. Their events are **forwarded** from the inner streams, not re-emitted independently.
-```
-  CompositeStream
-  ┌─────────────────────────────────────────────┐
-  │                                             │
-  │  ReadableResourceStream (inner readable)    │
-  │    emit('data')    ──────────────────────►  │ emit('data')
-  │    emit('end')     ──────────────────────►  │ emit('end')
-  │    emit('pause')   ──────────────────────►  │ emit('pause')
-  │    emit('resume')  ──────────────────────►  │ emit('resume')
-  │    emit('error')   ──────────────────────►  │ emit('error')
-  │    emit('close')   ─┐                       │
-  │                     │ if writable also       │
-  │                     │ closed → emit('close') │ emit('close')
-  │                     │                        │
-  │  WritableResourceStream (inner writable)    │
-  │    emit('drain')   ──────────────────────►  │ emit('drain')
-  │    emit('finish')  ──────────────────────►  │ emit('finish')
-  │    emit('error')   ──────────────────────►  │ emit('error')
-  │    emit('close')   ─┐                       │
-  │                     │ if readable also       │
-  │                     │ closed → emit('close') │
-  └─────────────────────────────────────────────┘
-```
-
-The `close` event on a `CompositeStream` fires only when **both** inner streams have closed. On a `DuplexResourceStream`, `close` fires as soon as either side closes (because both share the same underlying resource).
-```php
-use Hibla\Stream\CompositeStream;
-use Hibla\Stream\ReadableResourceStream;
-use Hibla\Stream\WritableResourceStream;
-
-$process = proc_open('cat', [0 => ['pipe', 'r'], 1 => ['pipe', 'w']], $pipes);
-
-$composite = new CompositeStream(
-    new ReadableResourceStream($pipes[1]),
-    new WritableResourceStream($pipes[0])
-);
-
-// These events come from the inner readable
-$composite->on('data',  fn($chunk) => echo $chunk);
-$composite->on('end',   fn()       => echo "Process output ended\n");
-
-// These come from the inner writable
-$composite->on('finish', fn()      => echo "All input sent\n");
-
-// Fires when BOTH sides have closed
-$composite->on('close', fn()       => proc_close($process));
-
-// Composite readable starts paused — attach listeners before resuming
-$composite->resume();
-$composite->write("hello\n");
-$composite->end();
-```
-
-### Promise-based API and events
-
-`PromiseReadableStream` and `PromiseWritableStream` use the same underlying events internally — they just shield you from attaching them yourself.
-```
-  readAsync() call                      Internal event wiring
-       │                                        │
-       ├── resume() ──────────────────────────► │ read watcher registered
-       │                                        │
-       │                              emit('data', $chunk)
-       │   ◄── promise resolves($chunk) ────────│
-       │                                        │
-       ├── pause() ──────────────────────────── │ read watcher removed
-       │
-       │ [next readAsync() call resumes again]
-
-
-  writeAsync() call                     Internal event wiring
-       │
-       ├── write($data) ─────────────► buffers data, starts write watcher
-       │
-       │   [buffer < softLimit] ─────► promise resolves(bytes) immediately
-       │
-       │   [buffer >= softLimit]
-       │       wait for emit('drain') ─► promise resolves(bytes)
-       │
-       │   [stream error] ────────────► promise rejects($error)
-```
-
-#### `null` is the EOF signal
-
-`readAsync()`, `readLineAsync()`, and `pipeAsync()` all resolve with `null` to signal end-of-stream. `null` is the *only* value that means EOF — every other resolved value, including empty strings and falsy strings, is real data from the stream.
-
-`readAllAsync()` is the exception: it resolves with a plain `string` (never `null`) because it accumulates everything and returns the complete contents in one go. There is no chunk-by-chunk loop to terminate.
-
-Always check for `null` with a strict identity check (`=== null`), not a truthiness check. A truthiness check breaks on valid data:
-```
-"0"   → falsy string  → loop stops early ✗
-""    → empty string  → loop stops early ✗
-"\n"  → empty line    → loop stops early ✗
-null  → EOF           → loop stops        ✓  (only this should stop the loop)
-```
-```php
-// WRONG — stops on any falsy chunk, including valid data like "0" or "\n"
-while ($line = await($stream->readLineAsync())) {
-    processLine($line);
-}
-
-// CORRECT — stops only on null (EOF)
-while (($line = await($stream->readLineAsync())) !== null) {
-    processLine($line);
-}
-```
-```php
-use Hibla\Stream\PromiseReadableStream;
-use Hibla\Stream\PromiseWritableStream;
-use function Hibla\await;
-
-// readAsync() manages pause/resume internally — you never call them
-$readable = new PromiseReadableStream(fopen('/tmp/data.txt', 'rb'));
-
-while (($line = await($readable->readLineAsync())) !== null) {
-    processLine(rtrim($line));
-    // The stream is paused between each readLineAsync() call —
-    // no data buffers up behind the scenes while you process
-}
-
-// writeAsync() manages drain internally — you never listen for it
-$writable = new PromiseWritableStream(fopen('/tmp/out.txt', 'wb'));
-
-await($writable->writeAsync("line one\n"));   // resolves when buffered
-await($writable->writeAsync("line two\n"));   // waits for drain if needed
-await($writable->endAsync());                 // resolves after 'finish' fires
-// 'close' has now fired — the resource is freed
-```
-
-### Quick reference — event order guarantees
-
-| Scenario | Event sequence |
-|---|---|
-| Normal readable read | `resume` → `data`+ → `end` → `close` |
-| Readable paused mid-flow | `resume` → `data`+ → `pause` → `resume` → `data`+ → `end` → `close` |
-| Readable read error | `error` → `close` |
-| Normal writable write+end | `drain`? → `finish` → `close` |
-| Writable `close()` with buffer | `close` (buffer discarded, no `finish`) |
-| Write to closed writable | `error` (no `close` — already closed) |
-| `pipe()` source ends | source: `end` → dest: `end()` → dest: `finish` → dest: `close` |
-| `pipe(['end' => false])` source ends | source: `end` → dest stays open, no `finish` |
-| `ThroughStream` transformer throws | `error` → `close` |
-| `CompositeStream` close | fires only when both inner streams are closed |
+Every stream class emits a defined set of events at precise lifecycle points.
+Understanding what each event means before working with individual stream types makes
+the rest of this document easier to follow.
+
+### Readable stream events
+
+| Event | Arguments | When it fires |
+|---|---|---|
+| `data` | `string $chunk` | A chunk of data is available from the resource |
+| `end` | — | The stream has reached EOF — no more `data` events will follow |
+| `close` | — | The underlying resource has been closed and freed |
+| `error` | `\Throwable $e` | A read error occurred. The stream closes immediately after |
+| `pause` | — | The stream has been paused — the read watcher is removed |
+| `resume` | — | The stream has resumed — the read watcher is re-registered |
+
+### Writable stream events
+
+| Event | Arguments | When it fires |
+|---|---|---|
+| `drain` | — | The write buffer has dropped below the soft limit — safe to write again |
+| `finish` | — | `end()` was called and all buffered data has been fully flushed |
+| `close` | — | The underlying resource has been closed and freed |
+| `error` | `\Throwable $e` | A write error occurred, or `write()` was called on a closed stream |
+
+### Key ordering guarantees
+
+- On a readable stream, `end` always fires before `close` on a clean EOF. A read
+  error skips `end` and goes directly to `close`.
+- On a writable stream, `finish` always fires before `close` after a clean `end()`.
+  Calling `close()` directly skips `finish` and discards any buffered data.
+- After `close` fires, all listeners are removed — any listener attached after
+  `close` will never fire.
+- `error` is always followed by `close`. The stream closes itself after emitting
+  `error`. You do not need to call `close()` inside an error handler.
+
+> **Always attach an `error` listener** on any stream you open. An unhandled `error`
+> event on an `EventEmitter` propagates and may terminate your process.
+
+For the full event sequence diagrams showing exactly when each event fires relative to
+stream operations, see [Stream Lifecycle and Events](#stream-lifecycle-and-events) in
+the reference section.
 
 ---
 
@@ -567,10 +181,7 @@ a `StreamException` if not. Non-blocking mode is set automatically.
 > **Note:** The examples throughout this README use `fopen()` to create resources for
 > brevity. `fopen()` is a blocking call — it blocks the event loop for the duration of
 > the file open operation. In production code running inside the event loop you should
-> obtain resources through non-blocking means (pre-opened handles, socket connections
-> established asynchronously, etc.) and pass them to the stream constructors.
-> The `fopen()` calls here are for demonstration purposes only.
-
+> obtain resources through non-blocking means and pass them to the stream constructors.
 ```php
 use Hibla\Stream\ReadableResourceStream;
 use Hibla\Stream\WritableResourceStream;
@@ -580,42 +191,26 @@ use Hibla\Stream\PromiseWritableStream;
 use Hibla\Stream\CompositeStream;
 use Hibla\Stream\ThroughStream;
 
-// Readable
-$readable = new ReadableResourceStream(fopen('/path/to/input.log', 'rb'));
+$readable  = new ReadableResourceStream(fopen('/path/to/input.log', 'rb'));
+$writable  = new WritableResourceStream(fopen('/path/to/output.log', 'wb'));
+$duplex    = new DuplexResourceStream(fopen('/path/to/data.bin', 'r+b'));
+$composite = new CompositeStream($readable, $writable);
+$through   = new ThroughStream(fn(string $data) => strtoupper($data));
 
-// Writable
-$writable = new WritableResourceStream(fopen('/path/to/output.log', 'wb'));
-
-// Read/write (resource must be opened in r+, w+, or a+ mode)
-$duplex = new DuplexResourceStream(fopen('/path/to/data.bin', 'r+b'));
-
-// Promise-based readable and writable
+// Promise-based variants
 $readable = new PromiseReadableStream(fopen('/path/to/input.log', 'rb'));
 $writable = new PromiseWritableStream(fopen('/path/to/output.log', 'wb'));
 
-// Combine two separate streams into a single duplex interface
-$composite = new CompositeStream($readable, $writable);
-
-// Transform stream — optional transformer callable
-$through = new ThroughStream(fn(string $data) => strtoupper($data));
-```
-
-`PromiseReadableStream` and `PromiseWritableStream` also provide a `fromResource()`
-named constructor as an alternative to direct instantiation:
-
-```php
+// Named constructor alternative for promise streams
 $readable = PromiseReadableStream::fromResource(fopen('/path/to/input.log', 'rb'));
 $writable = PromiseWritableStream::fromResource(fopen('/path/to/output.log', 'wb'));
 ```
 
 A `Stream` static factory is also available as a convenience shortcut for common
-cases like opening files and wrapping standard I/O handles. It is entirely optional —
-every example in this README uses direct instantiation.
-
+cases like opening files and wrapping standard I/O handles:
 ```php
 use Hibla\Stream\Stream;
 
-// Equivalent convenience shortcuts
 $readable = Stream::readableFile('/path/to/input.log');
 $writable = Stream::writableFile('/path/to/output.log');
 $stdin    = Stream::stdin();
@@ -626,16 +221,11 @@ $stdout   = Stream::stdout();
 
 ## Readable Streams
 
-`ReadableResourceStream` starts paused by default — this is deliberate. No `data`
-events fire, no bytes are read from the resource, and no event loop watcher is
-registered until you explicitly call `resume()` or attach a `data` listener. The
-pause-by-default design gives you time to attach all your event listeners, wire up
-error handlers, and set up pipe destinations before any data starts flowing. If the
-stream started eagerly, data could arrive before your listeners were in place and
-chunks would be silently lost. Once your setup is complete, call `resume()` to start
-the flow — or use the promise-based API, which manages pausing and resuming
-internally so you never need to call it manually.
-
+`ReadableResourceStream` starts paused by default — no data events fire, no bytes are
+read from the resource, and no event loop watcher is registered until you explicitly
+call `resume()` or attach a `data` listener. The pause-by-default design gives you
+time to attach all your event listeners, wire up error handlers, and set up pipe
+destinations before any data starts flowing.
 ```php
 use Hibla\Stream\ReadableResourceStream;
 
@@ -658,27 +248,21 @@ $stream->on('error', function (\Throwable $e) {
 $stream->resume();
 ```
 
-> **Important:** If you schedule a stream and no data seems to arrive, the most
-> likely cause is a missing `resume()` call. The stream is paused — it is working
-> correctly and waiting for you to start it. Always call `resume()` after attaching
-> your listeners, or switch to the promise-based API which handles this for you.
+> **If no data seems to arrive**, the most likely cause is a missing `resume()` call.
+> The stream is paused and waiting for you to start it. Alternatively, switch to the
+> promise-based API which handles `resume()` internally.
 
 ### Pausing and resuming
 
-Calling `pause()` stops `data` events from firing. The event loop watcher is removed
-until `resume()` is called, so the stream truly idles between reads rather than
-spinning.
-
-Both `pause()` and `resume()` are idempotent — calling `pause()` on an already-paused
-stream or `resume()` on an already-flowing stream is a no-op. No error is thrown, no
-duplicate events fire. This makes it safe to call them freely in event handlers and
-pipe callbacks without tracking state yourself.
-
+Calling `pause()` stops `data` events from firing and removes the event loop watcher,
+so the stream truly idles between reads rather than spinning. Both `pause()` and
+`resume()` are idempotent — calling them on an already-paused or already-flowing
+stream is a no-op.
 ```php
 $stream->on('data', function (string $chunk) use ($stream) {
-    $stream->pause(); // no-op if already paused
+    $stream->pause();
     processChunk($chunk);
-    $stream->resume(); // no-op if already flowing
+    $stream->resume();
 });
 ```
 
@@ -689,11 +273,8 @@ files. `seek()` repositions the internal pointer, clears the read-ahead buffer, 
 resets the EOF flag — meaning data will flow again from the new position even if the
 stream had previously reached the end.
 ```php
-use Hibla\Stream\ReadableResourceStream;
-
 $stream = new ReadableResourceStream(fopen('/tmp/data.bin', 'rb'));
 
-// Read the first chunk
 $stream->on('data', function (string $chunk) use ($stream) {
     echo "Read: " . strlen($chunk) . " bytes\n";
     $stream->pause();
@@ -701,123 +282,93 @@ $stream->on('data', function (string $chunk) use ($stream) {
 
 $stream->resume();
 
-// Later — rewind to the beginning and read again
-// seek() clears the internal buffer and resets EOF automatically
+// Rewind to the beginning and read again
 $stream->seek(0);
 $stream->resume();
 ```
 
 `seek()` returns `false` on non-seekable resources — pipes, sockets, and STDIN —
-without throwing. This is intentional: it lets you write generic code that handles
-both seekable and non-seekable streams without wrapping every seek in a try/catch.
-
-The silent `false` is easy to miss. Calling `seek()` on STDIN and ignoring the return
-value is a realistic mistake — the call silently does nothing and subsequent reads
-continue from wherever the stream already was.
+without throwing. Always check the return value if seekability matters:
 ```php
-// WRONG — seek() on a pipe silently returns false, reads continue from
-// wherever the stream pointer already is
+// WRONG — seek() on a pipe silently returns false
 $stream = new ReadableResourceStream(STDIN);
-$stream->seek(0); // false — ignored
+$stream->seek(0); // false — silently ignored
 
-// CORRECT — always check the return value if seekability matters
+// CORRECT
 if ($stream->seek(0) === false) {
     // resource is non-seekable — handle accordingly
 }
 ```
 
-If you need to handle both seekable and non-seekable streams generically, check
-`seek()`'s return value rather than inspecting the resource type yourself:
+`seek()` throws a `StreamException` in two cases: when the stream is closed, and when
+the underlying resource is no longer valid. `tell()` follows the same contract.
+```
+seek() return value
+───────────────────────────────────────────────────
+true            seek succeeded, buffer cleared, EOF reset
+false           resource is non-seekable (pipe, socket, STDIN)
+StreamException stream is closed or resource is invalid
+```
 ```php
-function rewind(ReadableResourceStream $stream): bool
-{
-    return $stream->seek(0);
-}
+$position = $stream->tell();
+$stream->seek(512, SEEK_SET);   // seek to byte 512
+$stream->seek(0, SEEK_END);     // seek to end of file
+$stream->seek(-128, SEEK_CUR);  // seek relative to current position
 ```
 
-`seek()` throws a `StreamException` in two cases where the call itself is invalid —
-when the stream is closed, and when the underlying resource is no longer valid. These
-are programming errors, not expected runtime conditions, which is why they throw
-rather than returning `false`.
-```
-  seek() return value
-  ───────────────────────────────────────────────
-  true            seek succeeded, buffer cleared, EOF reset
-  false           resource is non-seekable (pipe, socket, STDIN)
-  StreamException stream is closed or resource is invalid
-```
-
-`tell()` follows the same throwing contract — it throws on a closed or invalid
-stream, and returns `false` if the position cannot be determined.
-```php
-$position = $stream->tell();                  // int|false
-$seeked   = $stream->seek(512, SEEK_SET);     // seek to byte 512
-$seeked   = $stream->seek(0, SEEK_END);       // seek to end of file
-$seeked   = $stream->seek(-128, SEEK_CUR);    // seek relative to current position
-```
-
-> **Note:** `seek()` and `tell()` operate on the underlying PHP resource pointer.
-> If the stream has buffered data internally — for example, a partial chunk read
-> ahead of a `readLineAsync()` call — `seek()` discards that buffer. This is
-> intentional: after a seek the buffer is stale and continuing from it would
-> produce incorrect data.
-> **Note:** `seek()` and `tell()` operate on the underlying PHP resource pointer.
-> If the stream has buffered data internally — for example, a partial chunk read
-> ahead of a `readLineAsync()` call — `seek()` discards that buffer. This is
-> intentional: after a seek the buffer is stale and continuing from it would
-> produce incorrect data.
+> **Note:** `seek()` discards any internally buffered data. After a seek the buffer is
+> stale and continuing from it would produce incorrect data, so it is always cleared.
 
 ---
 
 ## Writable Streams
 
 `WritableResourceStream` accepts data via `write()`, buffers it internally, and
-registers a write watcher with the event loop to drain the buffer non-blocking.
-Unlike readable streams, the writable side is always ready to accept `write()` calls
-immediately — no `resume()` is needed. `end()` signals that no more data will be
-written — the buffer drains, then `finish` fires, then the stream closes.
+registers a write watcher with the event loop to drain the buffer non-blocking. Unlike
+readable streams, no `resume()` is needed — `write()` can be called immediately after
+construction. `end()` signals that no more data will be written. The buffer drains,
+then `finish` fires, then the stream closes.
 
-`end()` is idempotent — calling it on a stream that is already ending or already
-closed is a no-op. `close()` is likewise idempotent — calling it multiple times
-will not throw or emit duplicate `close` events. This makes it safe to call
-`end()` or `close()` defensively without needing to check `isWritable()` or
-`isEnding()` first.
+`end()` and `close()` are both idempotent — calling them multiple times will not throw
+or emit duplicate events. This makes it safe to call them defensively without checking
+`isWritable()` first.
 
-Calling `write()` on a closed stream emits an `error` event and returns `false`
-rather than throwing an exception. Always attach an `error` listener if there is any
-chance `write()` could be called after the stream closes — an unhandled `error` event
-will propagate and may terminate your process.
-
+Calling `write()` on a closed stream emits an `error` event and returns `false` rather
+than throwing an exception. Always attach an `error` listener if there is any chance
+`write()` could be called after the stream closes.
 ```php
 use Hibla\Stream\WritableResourceStream;
 
 $stream = new WritableResourceStream(fopen('/tmp/output.txt', 'wb'));
 
-// Write is available immediately — no resume() needed
+$stream->on('finish', fn() => echo "All data written\n");
+$stream->on('error', fn(\Throwable $e) => echo "Write error: " . $e->getMessage() . "\n");
+
 $stream->write("First line\n");
 $stream->write("Second line\n");
 $stream->end("Final line\n");
-
-// Calling end() again here is a no-op — safe to do defensively
-$stream->end();
-
-$stream->on('finish', function () {
-    echo "All data written\n";
-});
-
-$stream->on('error', function (\Throwable $e) {
-    echo "Write error: " . $e->getMessage() . "\n";
-});
 ```
 
----
-
-## Backpressure
+### Backpressure
 
 When a writable stream's internal buffer exceeds its soft limit, `write()` returns
-`false`. This is the backpressure signal — you should stop writing and wait for the
-`drain` event before continuing.
-
+`false`. This is the backpressure signal — stop writing and wait for the `drain` event
+before continuing.
+```
+Consumer                 WritableResourceStream            Kernel buffer
+   │                            │                               │
+   │  write("chunk 1")          │                               │
+   ├──────────────────────────► │  buffer: 10 KB (< 64 KB)     │
+   │  ◄── true (keep going)     │                               │
+   │                            │                               │
+   │  write("chunk 2")          │                               │
+   ├──────────────────────────► │  buffer: 70 KB (>= 64 KB)    │
+   │  ◄── FALSE ◄───────────────│  STOP WRITING                 │
+   │                            │                               │
+   │  [wait for drain]          │ ─────────────────────────────►│ fwrite()
+   │                            │  buffer: 15 KB (< 64 KB)      │
+   │  ◄──── emit('drain') ◄─────│  RESUME                       │
+```
 ```php
 use Hibla\Stream\WritableResourceStream;
 
@@ -826,10 +377,9 @@ $writable = new WritableResourceStream($socket, softLimit: 65536);
 
 function pump(string $data, WritableResourceStream $writable): void
 {
-    $feedMore = $writable->write($data);
+    $canContinue = $writable->write($data);
 
-    if ($feedMore === false) {
-        // Buffer is full — wait for drain before sending more
+    if ($canContinue === false) {
         $writable->once('drain', function () use ($writable) {
             pump(getNextChunk(), $writable);
         });
@@ -837,8 +387,8 @@ function pump(string $data, WritableResourceStream $writable): void
 }
 ```
 
-The `pipe()` and `pipeAsync()` methods handle this automatically — you only need to
-manage backpressure manually when writing directly.
+`pipe()` and `pipeAsync()` handle all of this automatically. Manual backpressure
+management is only needed when calling `write()` directly.
 
 ---
 
@@ -848,7 +398,6 @@ manage backpressure manually when writing directly.
 automatically. When the writable buffer fills, the readable is paused. When the
 writable drains, the readable resumes. The destination stream is returned for
 chaining.
-
 ```php
 use Hibla\Stream\ReadableResourceStream;
 use Hibla\Stream\WritableResourceStream;
@@ -856,408 +405,59 @@ use Hibla\Stream\WritableResourceStream;
 $source      = new ReadableResourceStream(fopen('/tmp/input.bin', 'rb'));
 $destination = new WritableResourceStream(fopen('/tmp/output.bin', 'wb'));
 
+$destination->on('finish', fn() => echo "Transfer complete\n");
+
 // pipe() calls resume() internally — no need to call it yourself
 $source->pipe($destination);
 ```
 
-Calling `pipe()` on a stream that is not readable is a no-op — the destination is
-returned unchanged and the source is left as-is. Calling `pipe()` on a readable
-source pointed at a destination that is not writable pauses the source and returns
-the destination unchanged. In both cases no error is thrown, making it safe to call
-`pipe()` defensively in cleanup paths.
-
-Pass `['end' => false]` to keep the destination open after the source ends — useful
-when piping multiple sources to the same destination sequentially:
-
-```php
-$source->pipe($destination, ['end' => false]);
-```
-
-Pipe chains are composable — the return value is the destination stream:
-
+Pipe chains are composable — each `pipe()` call returns the destination:
 ```php
 use Hibla\Stream\ThroughStream;
-use Hibla\Stream\WritableResourceStream;
 
 $source
     ->pipe(new ThroughStream(fn($d) => gzencode($d)))
     ->pipe(new WritableResourceStream(fopen('/tmp/compressed.gz', 'wb')));
 ```
 
----
-
-## Promise-Based API
-
-The event-driven API — `on('data', ...)`, `pause()`, `resume()`, `drain` — is the
-right tool when you need maximum throughput and full control over flow. A TCP server
-handling hundreds of simultaneous connections, a proxy streaming bytes between two
-sockets, or a pipeline processing a continuous feed are all cases where the
-event-driven model pays off: you wire up the listeners once and let the event loop
-drive everything at full speed.
-
-But not every use case needs that level of control. Reading a log file line by line,
-processing a CSV upload, writing a sequence of records to a file — these are
-tasks where setting up `data` listeners, managing the `end` event, tracking a buffer,
-and wiring `drain` callbacks is pure boilerplate. The logic you actually care about is
-buried under the ceremony of the event model.
-
-`PromiseReadableStream` and `PromiseWritableStream` exist to eliminate that boilerplate.
-They extend their base classes with promise-returning methods that let you express
-sequential I/O as straight-line code. Backpressure, pausing, resuming, and `drain`
-handling are all managed internally — you call `readAsync()` and get the next chunk,
-you call `writeAsync()` and it resolves when the data is safely buffered. No listeners
-to attach, no state to track, no events to coordinate.
-
-The promise-based API manages pausing and resuming internally. You never need to call
-`resume()` manually — calling `readAsync()` resumes the stream to fetch the next chunk
-and pauses it again once the chunk is delivered. This gives you precise control over
-timing: data only flows when you ask for it, and the stream idles between reads without
-spinning or buffering data you have not asked for yet. When writing, `writeAsync()`
-waits for the `drain` event automatically if the buffer is full — you never need to
-check the return value of `write()` or attach a `drain` listener yourself.
-
-Calling `readAsync()` on a stream that has already reached EOF resolves immediately
-with `null` — no suspension, no event loop tick. Calling `writeAsync('')` resolves
-immediately with `0`. These fast-path no-ops mean you can call the promise API
-unconditionally in loops without worrying about unnecessary Fiber overhead on
-boundary conditions.
+Pass `['end' => false]` to keep the destination open after the source ends — useful
+when piping multiple sources to the same destination sequentially:
 ```php
-use Hibla\Stream\PromiseReadableStream;
-use function Hibla\await;
-
-$stream = new PromiseReadableStream(fopen('/tmp/data.txt', 'rb'));
-
-// No resume() needed — readAsync() handles it internally
-// The stream only reads when you ask for the next chunk
-$chunk = await($stream->readAsync(1024));
-
-// Read a full line (including the newline character)
-$line = await($stream->readLineAsync());
-
-// Read the entire stream into a string
-$contents = await($stream->readAllAsync());
-```
-```php
-use Hibla\Stream\PromiseWritableStream;
-use function Hibla\await;
-
-$stream = new PromiseWritableStream(fopen('/tmp/out.txt', 'wb'));
-
-// Write a chunk — resolves with the number of bytes buffered
-// Backpressure is handled internally — no drain listener needed
-$bytes = await($stream->writeAsync("Hello, world\n"));
-
-// writeAsync('') is a no-op — resolves immediately with 0
-$bytes = await($stream->writeAsync('')); // 0, no write attempted
-
-// Write a line (appends "\n" automatically)
-await($stream->writeLineAsync("Another line"));
-
-// End the stream and wait for all data to flush
-await($stream->endAsync());
-
-// Calling endAsync() again is a no-op — resolves immediately
-await($stream->endAsync());
-```
-
-### `readAsync()` — chunks, not exact lengths
-
-`readAsync($length)` resolves with **up to** `$length` bytes — not exactly
-`$length` bytes. The `$length` argument is passed directly to `fread()` as
-the maximum read size, but `fread()` returns whatever the OS has buffered at
-the moment the read watcher fires, which may be less than requested.
-
-This is correct behavior for general streaming — you process each chunk as it
-arrives without waiting for a specific size. But it is the wrong primitive for
-binary protocol parsing, where message boundaries are defined by fixed field
-sizes and reading a short chunk silently corrupts the parse state.
-```php
-// Wrong for binary protocols — may return fewer than 16 bytes
-$header = await($stream->readAsync(16));
-$length = unpack('N', $header)[1]; // corrupt if $header is only 4 bytes
-```
-
-The three reasons a short chunk is returned:
-
-- **Network fragmentation.** A TCP segment arrives with only part of the
-  expected data. The rest is in flight and will arrive on the next read.
-- **Kernel buffer boundary.** The OS returns whatever is in the socket receive
-  buffer at the moment `stream_select()` fires, which may be mid-message.
-- **Pipe chunk size.** Pipe reads return up to the pipe buffer size — on Linux
-  this is 65536 bytes by default, but smaller writes from the other end produce
-  smaller reads regardless of your `$length` argument.
-
-For any use case where you need exactly N bytes — fixed-length header parsing,
-length-prefixed framing, binary record reading — loop over `readAsync()` until
-you have accumulated the required count. Passing `$remaining` as the length on
-each iteration correctly bounds each individual `fread()` call while the loop
-accumulates to the exact total:
-```php
-use Hibla\Stream\PromiseReadableStream;
-use function Hibla\await;
-
-/**
- * Read exactly $length bytes from a stream.
- * Returns null if EOF is reached before $length bytes are available.
- *
- * @return string|null Exactly $length bytes, or null on EOF
- */
-function readExact(PromiseReadableStream $stream, int $length): ?string
-{
-    $buffer    = '';
-    $remaining = $length;
-
-    while ($remaining > 0) {
-        // Pass $remaining as the length — bounds each fread() call
-        // while the loop accumulates to the exact total
-        $chunk = await($stream->readAsync($remaining));
-
-        if ($chunk === null) {
-            // EOF before we collected enough bytes — incomplete message
-            return null;
-        }
-
-        $buffer    .= $chunk;
-        $remaining -= strlen($chunk);
-    }
-
-    return $buffer;
-}
-```
-
-With that helper, binary protocol parsing is correct regardless of how the
-OS delivers data:
-```php
-// Read a length-prefixed binary message:
-// [ 4-byte uint32 length ][ N bytes payload ]
-
-$header = readExact($stream, 4);
-
-if ($header === null) {
-    // Clean EOF — no more messages
-    return;
-}
-
-$payloadLength = unpack('N', $header)[1];
-$payload       = readExact($stream, $payloadLength);
-
-if ($payload === null) {
-    throw new \RuntimeException(
-        "Truncated message: expected {$payloadLength} bytes, stream ended early"
-    );
-}
-
-$message = parseMessage($payload);
-```
-
-`readLineAsync()` does not have this problem — it always returns a complete
-line including the trailing `\n`, accumulating chunks internally until it finds
-the delimiter. Use `readLineAsync()` for text protocols and `readExact()` for
-binary protocols. Use raw `readAsync()` only when your processing logic is
-genuinely chunk-size-agnostic — streaming file copies, proxying raw bytes,
-feeding a streaming parser that handles partial input itself.
-
-### `pipeAsync()` — promise-based piping with bytes transferred
-
-`pipeAsync()` pipes a `PromiseReadableStream` to any writable stream and resolves
-with the total number of bytes transferred once the source ends. Backpressure between
-source and destination is handled automatically — the source pauses when the
-destination buffer fills and resumes when it drains.
-```php
-use Hibla\Stream\PromiseReadableStream;
-use Hibla\Stream\WritableResourceStream;
-use function Hibla\await;
-
-$source = new PromiseReadableStream(fopen('/tmp/large.bin', 'rb'));
-$dest   = new WritableResourceStream(fopen('/tmp/copy.bin', 'wb'));
-
-$totalBytes = await($source->pipeAsync($dest));
-
-echo "Transferred: $totalBytes bytes\n";
-```
-
-### Reading line by line
-
-Without the promise API, reading a file line by line requires buffering incoming
-`data` chunks, scanning for newlines manually, tracking partial lines across chunks,
-and coordinating the `end` event to flush the final line. With `readLineAsync()` that
-collapses to a simple loop.
-
-`readLineAsync()` and `readAsync()` signal end-of-stream by returning an explicit
-`null` sentinel — not a falsy value. Always check with a strict `!== null` guard,
-never a plain truthiness check. A truthiness check breaks on valid stream content:
-
-| Value read from stream | Truthiness check | `!== null` check |
-| :--- | :---: | :---: |
-| `"0"` — a valid line containing zero | stops early | continues |
-| `""` — an empty string | stops early | continues |
-| `"\n"` — a blank line | stops early | continues |
-| `"false"` — the string false | continues | continues |
-| `null` — true EOF | stops | stops |
-
-Only `null` means the stream is exhausted. Every other value — including empty
-strings, zero strings, and blank lines — is valid content that must be passed
-to the loop body:
-```php
-use Hibla\Stream\PromiseReadableStream;
-use function Hibla\await;
-
-$stream = new PromiseReadableStream(fopen('/var/log/app.log', 'rb'));
-
-// CORRECT — stops only on null (EOF)
-while (($line = await($stream->readLineAsync())) !== null) {
-    processLine(rtrim($line));
-}
-
-// WRONG — stops on any falsy chunk, including valid data like "0" or "\n"
-while ($line = await($stream->readLineAsync())) {
-    processLine($line);
-}
-```
-
-`readAllAsync()` is the exception to the null-sentinel rule. It reads the entire
-stream into a single string and returns it when EOF is reached — there is no loop
-and no sentinel to check. Use it when you need the full content at once and the
-stream is small enough to hold in memory:
-```php
-// Reads everything into one string — no null check needed
-$contents = await($stream->readAllAsync());
-```
-
-### `maxLength` safeguard
-
-Both `readAllAsync()` and `readLineAsync()` accept a `$maxLength` parameter to
-prevent unbounded memory usage. `readAllAsync()` defaults to 1 MiB.
-`readLineAsync()` defaults to the stream's chunk size.
-```php
-// Read at most 512 KiB
-$contents = await($stream->readAllAsync(maxLength: 524288));
-
-// Read at most 4096 bytes per line
-$line = await($stream->readLineAsync(maxLength: 4096));
-```
-
-### Cancellation
-
-All promise-based methods return a standard `PromiseInterface` — you
-can cancel any in-flight stream operation by calling `cancel()` directly
-on the returned promise. Cancelling detaches all internal event
-listeners, pauses the stream, and cleans up any pending state. No
-further callbacks fire after cancellation.
-```php
-use Hibla\Stream\PromiseReadableStream;
-use Hibla\EventLoop\Loop;
-use function Hibla\await;
-
-$readable = new PromiseReadableStream(fopen('/tmp/large.log', 'rb'));
-
-// Start a read — returns a promise you can cancel directly
-$readPromise = $readable->readLineAsync();
-
-// Cancel it after 2 seconds if no data has arrived
-$timerId = Loop::addTimer(2.0, function() use ($readPromise) {
-    $readPromise->cancel(); // detaches listeners, unblocks the fiber
+// Source A's 'end' will NOT call dest->end()
+$sourceA->pipe($dest, ['end' => false]);
+$sourceA->on('end', function () use ($sourceB, $dest) {
+    $sourceB->pipe($dest); // this one WILL close dest when finished
 });
-
-try {
-    $line = await($readPromise);
-    Loop::cancelTimer($timerId); // data arrived — cancel the timeout
-} catch (\Hibla\Promise\Exceptions\CancelledException $e) {
-    echo "Read cancelled — no data within 2 seconds\n";
-}
 ```
 
-This is particularly useful for `pipeAsync()` where you may want to
-abort a large transfer mid-flight — cancelling the promise stops the
-transfer immediately, pauses the source, and detaches the destination
-listener without closing either stream:
-```php
-use Hibla\Stream\PromiseReadableStream;
-use Hibla\Stream\WritableResourceStream;
-use Hibla\EventLoop\Loop;
-use function Hibla\await;
+Calling `pipe()` on a non-readable source or a non-writable destination is a no-op —
+no error is thrown, making it safe to call defensively in cleanup paths.
 
-$source = new PromiseReadableStream(fopen('/tmp/large.bin', 'rb'));
-$dest   = new WritableResourceStream(fopen('/tmp/copy.bin', 'wb'));
-
-$transferPromise = $source->pipeAsync($dest);
-
-// Cancel from anywhere — for example after 5 seconds or an external signal
-Loop::addTimer(5.0, function() use ($transferPromise) {
-    $transferPromise->cancel(); // stops the transfer immediately
-});
-
-try {
-    $totalBytes = await($transferPromise);
-    echo "Transferred: $totalBytes bytes\n";
-} catch (\Hibla\Promise\Exceptions\CancelledException $e) {
-    echo "Transfer cancelled\n";
-    // $source and $dest are still open — you decide what to do with them
-}
-```
-
-For structured cancellation across multiple operations — timeouts,
-user-initiated cancellation, or linked signals — use
-`CancellationTokenSource` and pass its token to `await()`. When the
-token fires, the currently suspended `readLineAsync()` or `readAsync()`
-throws `CancelledException` and unwinds the fiber immediately:
-```php
-use Hibla\Cancellation\CancellationTokenSource;
-use function Hibla\await;
-
-// 30 second hard limit on the entire read loop
-$cts = new CancellationTokenSource(30.0);
-
-try {
-    while (($line = await($stream->readLineAsync(), $cts->token)) !== null) {
-        processLine(rtrim($line));
-    }
-} catch (\Hibla\Promise\Exceptions\CancelledException $e) {
-    echo "Stream read timed out after 30 seconds\n";
-}
-```
-
-Cancelling a `readLineAsync()` or `readAllAsync()` in progress also
-cancels the underlying `readAsync()` call that is currently suspended,
-immediately unblocking the fiber regardless of whether the cancellation
-came from a direct `$promise->cancel()` call or from a
-`CancellationToken` firing.
-
----
-
-## Through Streams
+### Through Streams
 
 `ThroughStream` is a duplex stream that sits in the middle of a pipe chain. Data
-written to it is emitted as `data` events on its readable side, optionally
-transformed by a callable. Without a transformer it acts as a transparent
-passthrough.
-
+written to it is emitted as `data` events on its readable side, optionally transformed
+by a callable. Without a transformer it acts as a transparent passthrough.
 ```php
-use Hibla\Stream\ReadableResourceStream;
-use Hibla\Stream\WritableResourceStream;
 use Hibla\Stream\ThroughStream;
 
-$source      = new ReadableResourceStream(fopen('/tmp/input.txt', 'rb'));
-$destination = new WritableResourceStream(fopen('/tmp/output.txt', 'wb'));
-
+// Transform: compress mid-pipe
 $source
-    ->pipe(new ThroughStream(fn(string $data) => strtoupper($data)))
+    ->pipe(new ThroughStream(fn(string $data) => gzencode($data)))
     ->pipe($destination);
-```
 
-```php
-// Transparent passthrough — useful as a tap to inspect data mid-pipe
+// Spy: inspect data mid-pipe without modifying it
 $spy = new ThroughStream(function (string $data) {
-    echo "Passing through: " . strlen($data) . " bytes\n";
-    return $data;
+    fwrite(STDERR, sprintf("[spy] %d bytes\n", strlen($data)));
+    return $data; // must return data to pass it through
 });
 
 $source->pipe($spy)->pipe($destination);
 ```
 
-`write()` on a closed `ThroughStream` emits an `error` event and returns `false`
-rather than throwing. `end()` and `close()` on an already-closed stream are no-ops.
-If the transformer throws, the `error` event fires and the stream closes.
+`write()` on a closed `ThroughStream` emits an `error` event and returns `false`.
+`end()` and `close()` on an already-closed stream are no-ops. If the transformer
+throws, the `error` event fires and the stream closes.
 
 ---
 
@@ -1265,32 +465,28 @@ If the transformer throws, the `error` event fires and the stream closes.
 
 `DuplexResourceStream` wraps a single resource opened in read/write mode — such as a
 TCP socket or a file opened with `r+`. It presents a unified duplex interface while
-managing a `ReadableResourceStream` and `WritableResourceStream` on the same
-underlying resource internally. Like all readable streams in Hibla, the readable side
-starts paused — attach your `data` and `error` listeners first, then call `resume()`
-to begin receiving data. The writable side is always ready to accept `write()` calls
-immediately.
+managing readable and writable sides on the same underlying resource internally.
 
+Like all readable streams in Hibla, the readable side starts paused — attach your
+`data` and `error` listeners first, then call `resume()`. The writable side is always
+ready to accept `write()` calls immediately.
 ```php
 use Hibla\Stream\DuplexResourceStream;
 
 $socket = stream_socket_client('tcp://api.example.com:80');
 $duplex = new DuplexResourceStream($socket);
 
-// Attach all listeners before resuming — data will not flow until resume() is called
 $duplex->on('data', function (string $response) use ($duplex) {
     echo $response;
     $duplex->close();
 });
 
-$duplex->on('error', function (\Throwable $e) {
-    echo "Error: " . $e->getMessage() . "\n";
-});
+$duplex->on('error', fn(\Throwable $e) => echo "Error: " . $e->getMessage() . "\n");
 
-// Write is always available immediately — no resume() needed for the writable side
+// Write is always available immediately
 $duplex->write("GET / HTTP/1.0\r\nHost: api.example.com\r\n\r\n");
 
-// Start receiving — safe to call after write() since the resource is already open
+// Start receiving after listeners are in place
 $duplex->resume();
 ```
 
@@ -1303,10 +499,7 @@ Passing a read-only or write-only resource throws a `StreamException`.
 
 `CompositeStream` combines two independent, one-directional streams into a single
 duplex interface. This is useful when your readable and writable sides are separate
-resources — for example, a child process's `stdout` and `stdin`. The readable side
-of a composite stream follows the same pause-by-default behaviour — attach your
-listeners before calling `resume()`.
-
+resources — for example, a child process's stdout and stdin.
 ```php
 use Hibla\Stream\CompositeStream;
 use Hibla\Stream\ReadableResourceStream;
@@ -1326,18 +519,252 @@ $composite = new CompositeStream(
 $composite->on('data', fn(string $chunk) => saveChunk($chunk));
 $composite->on('end', fn() => proc_close($process));
 
+$composite->resume();
 $inputStream->pipe($composite);
 ```
 
-Events from the readable side (`data`, `end`, `pause`, `resume`, `error`) and the
-writable side (`drain`, `finish`, `error`) are forwarded onto the composite stream
-automatically. The composite closes when both sides have closed. Calling `close()`
-on an already-closed composite is a no-op.
+Events from each inner stream are forwarded onto the composite automatically. The
+composite `close` event fires only when both inner streams have closed. Calling
+`close()` on an already-closed composite is a no-op.
+
+---
+
+## Promise-Based API
+
+The event-driven API — `on('data', ...)`, `pause()`, `resume()`, `drain` — is the
+right tool when you need maximum throughput and full control over flow. A TCP server
+handling hundreds of simultaneous connections, a proxy streaming bytes between two
+sockets, or a pipeline processing a continuous feed are all cases where the
+event-driven model pays off.
+
+But not every use case needs that level of control. Reading a log file line by line,
+processing a CSV upload, writing a sequence of records to a file — these are tasks
+where setting up `data` listeners, managing the `end` event, and wiring `drain`
+callbacks is pure boilerplate. `PromiseReadableStream` and `PromiseWritableStream`
+eliminate that boilerplate. They extend their base classes with promise-returning
+methods that let you express sequential I/O as straight-line code.
+
+The promise-based API manages pausing and resuming internally. `readAsync()` resumes
+the stream to fetch the next chunk and pauses it again once the chunk is delivered —
+data only flows when you ask for it. When writing, `writeAsync()` waits for the
+`drain` event automatically if the buffer is full — you never need to check `write()`'s
+return value or attach a `drain` listener yourself.
+
+### Reading data
+```php
+use Hibla\Stream\PromiseReadableStream;
+use function Hibla\await;
+
+$stream = new PromiseReadableStream(fopen('/tmp/data.txt', 'rb'));
+
+// Read the next chunk (up to $length bytes)
+$chunk = await($stream->readAsync(1024));
+
+// Read a full line including the trailing newline character
+$line = await($stream->readLineAsync());
+
+// Read the entire stream into a single string
+$contents = await($stream->readAllAsync());
+```
+
+`readAsync()`, `readLineAsync()`, and `pipeAsync()` signal end-of-stream by resolving
+with `null`. Always check with a strict `!== null` guard — a truthiness check breaks
+on valid data:
+
+| Value | Truthiness check | `!== null` check |
+| :--- | :---: | :---: |
+| `"0"` — a line containing zero | stops early | continues |
+| `""` — an empty string | stops early | continues |
+| `"\n"` — a blank line | stops early | continues |
+| `null` — true EOF | stops | stops |
+```php
+// CORRECT — stops only on null (EOF)
+while (($line = await($stream->readLineAsync())) !== null) {
+    processLine(rtrim($line));
+}
+
+// WRONG — stops on any falsy chunk, including valid data like "0" or "\n"
+while ($line = await($stream->readLineAsync())) {
+    processLine($line);
+}
+```
+
+`readAllAsync()` is the exception — it resolves with a plain string (never `null`)
+because it accumulates everything and returns the complete contents in one go:
+```php
+$contents = await($stream->readAllAsync());
+```
+
+Both `readAllAsync()` and `readLineAsync()` accept a `$maxLength` parameter to
+prevent unbounded memory usage:
+```php
+$contents = await($stream->readAllAsync(maxLength: 524288));  // 512 KiB limit
+$line     = await($stream->readLineAsync(maxLength: 4096));   // 4 KiB per line
+```
+
+Calling `readAsync()` on a stream that has already reached EOF resolves immediately
+with `null` — no event loop tick needed.
+
+### Reading exact byte counts
+
+`readAsync($length)` resolves with **up to** `$length` bytes — not exactly `$length`
+bytes. The `$length` argument is passed to `fread()` as the maximum read size, but
+`fread()` returns whatever the OS has buffered at the moment the read watcher fires,
+which may be less than requested.
+
+This is correct for general streaming, but wrong for binary protocol parsing where
+message boundaries are defined by fixed field sizes. For those cases, loop over
+`readAsync()` until you have accumulated the required count:
+```php
+/**
+ * Read exactly $length bytes from a stream.
+ * Returns null if EOF is reached before $length bytes are available.
+ *
+ * @return string|null
+ */
+function readExact(PromiseReadableStream $stream, int $length): ?string
+{
+    $buffer    = '';
+    $remaining = $length;
+
+    while ($remaining > 0) {
+        $chunk = await($stream->readAsync($remaining));
+
+        if ($chunk === null) {
+            return null; // EOF before enough bytes arrived
+        }
+
+        $buffer    .= $chunk;
+        $remaining -= strlen($chunk);
+    }
+
+    return $buffer;
+}
+```
+
+With that helper, binary protocol parsing is correct regardless of how the OS
+delivers data:
+```php
+// Read a length-prefixed binary message:
+// [ 4-byte uint32 length ][ N bytes payload ]
+
+$header = readExact($stream, 4);
+if ($header === null) {
+    return; // clean EOF — no more messages
+}
+
+$payloadLength = unpack('N', $header)[1];
+$payload       = readExact($stream, $payloadLength);
+
+if ($payload === null) {
+    throw new \RuntimeException("Truncated message: stream ended early");
+}
+```
+
+Use `readLineAsync()` for text protocols, `readExact()` for binary protocols, and raw
+`readAsync()` only when your processing logic is genuinely chunk-size-agnostic —
+streaming file copies, proxying raw bytes, or feeding a streaming parser that handles
+partial input itself.
+
+### Writing data
+```php
+use Hibla\Stream\PromiseWritableStream;
+use function Hibla\await;
+
+$stream = new PromiseWritableStream(fopen('/tmp/out.txt', 'wb'));
+
+// Resolves with the number of bytes buffered
+// Backpressure is handled internally — no drain listener needed
+$bytes = await($stream->writeAsync("Hello, world\n"));
+
+// Write a line (appends "\n" automatically)
+await($stream->writeLineAsync("Another line"));
+
+// End the stream and wait for all data to flush
+// Resolves only after 'finish' fires — all data is durably written
+await($stream->endAsync());
+```
+
+`writeAsync('')` resolves immediately with `0` — no write is attempted.
+`endAsync()` called on a stream that is already ending or already closed resolves
+immediately — it is safe to call defensively.
+
+### Piping with `pipeAsync()`
+
+`pipeAsync()` pipes a `PromiseReadableStream` to any writable stream and resolves with
+the total number of bytes transferred once the source ends. Backpressure between
+source and destination is handled automatically.
+```php
+use Hibla\Stream\PromiseReadableStream;
+use Hibla\Stream\WritableResourceStream;
+use function Hibla\await;
+
+$source = new PromiseReadableStream(fopen('/tmp/large.bin', 'rb'));
+$dest   = new WritableResourceStream(fopen('/tmp/copy.bin', 'wb'));
+
+$totalBytes = await($source->pipeAsync($dest));
+echo "Transferred: $totalBytes bytes\n";
+```
+
+### Cancellation
+
+All promise-based methods return a standard `PromiseInterface` — cancel any
+in-flight operation by calling `cancel()` on the returned promise. Cancelling detaches
+all internal event listeners, pauses the stream, and cleans up pending state. No
+further callbacks fire after cancellation.
+```php
+use Hibla\EventLoop\Loop;
+use function Hibla\await;
+
+$readable    = new PromiseReadableStream(fopen('/tmp/large.log', 'rb'));
+$readPromise = $readable->readLineAsync();
+
+$timerId = Loop::addTimer(2.0, function () use ($readPromise) {
+    $readPromise->cancel();
+});
+
+try {
+    $line = await($readPromise);
+    Loop::cancelTimer($timerId);
+} catch (\Hibla\Promise\Exceptions\CancelledException $e) {
+    echo "Read cancelled — no data within 2 seconds\n";
+}
+```
+
+Cancelling `pipeAsync()` stops the transfer immediately, pauses the source, and
+detaches the destination listener without closing either stream:
+```php
+$transferPromise = $source->pipeAsync($dest);
+
+Loop::addTimer(5.0, fn() => $transferPromise->cancel());
+
+try {
+    $totalBytes = await($transferPromise);
+} catch (\Hibla\Promise\Exceptions\CancelledException $e) {
+    echo "Transfer cancelled\n";
+    // $source and $dest are still open — you decide what to do with them
+}
+```
+
+For structured cancellation across multiple operations, use `CancellationTokenSource`:
+```php
+use Hibla\Cancellation\CancellationTokenSource;
+use function Hibla\await;
+
+$cts = new CancellationTokenSource(30.0); // 30 second hard limit
+
+try {
+    while (($line = await($stream->readLineAsync(), $cts->token)) !== null) {
+        processLine(rtrim($line));
+    }
+} catch (\Hibla\Promise\Exceptions\CancelledException $e) {
+    echo "Stream read timed out after 30 seconds\n";
+}
+```
 
 ---
 
 ## Standard I/O
-
 ```php
 use Hibla\Stream\PromiseReadableStream;
 use Hibla\Stream\WritableResourceStream;
@@ -1345,7 +772,7 @@ use Hibla\Stream\CompositeStream;
 use Hibla\Stream\ReadableResourceStream;
 use function Hibla\await;
 
-// Read from STDIN line by line (promise-based — no resume() needed)
+// Read from STDIN line by line
 $stdin = new PromiseReadableStream(STDIN);
 
 while (($line = await($stdin->readLineAsync())) !== null) {
@@ -1361,7 +788,6 @@ $stderr = new WritableResourceStream(STDERR);
 $stderr->write("Something went wrong\n");
 
 // Combined interactive console — STDIN readable, STDOUT writable
-// Attach listeners before resuming
 $stdio = new CompositeStream(
     new ReadableResourceStream(STDIN),
     new WritableResourceStream(STDOUT)
@@ -1370,104 +796,6 @@ $stdio = new CompositeStream(
 $stdio->on('data', fn(string $input) => $stdio->write("Echo: $input"));
 $stdio->resume();
 ```
-
----
-
-## Resource Cleanup and Destructors
-
-`ReadableResourceStream`, `WritableResourceStream`, `DuplexResourceStream`,
-`CompositeStream`, and `ThroughStream` all implement `__destruct`. If the stream has
-not been explicitly closed by the time the object is garbage collected, the destructor
-calls `close()` automatically to free the underlying resource.
-
-This means stream resources are never silently leaked — a stream that goes out of
-scope without an explicit `close()` call will still have its file handle or socket
-closed when PHP collects it.
-
-However, the destructor calls `close()` directly — it does not call `end()` first.
-For writable streams this has an important consequence: **any data still buffered at
-destruction time is discarded and the `finish` event never fires.** If you rely on
-`finish` to confirm that all data has been flushed to the underlying resource, you
-must always call `end()` or `endAsync()` explicitly before letting the stream go out
-of scope.
-
-```php
-use Hibla\Stream\WritableResourceStream;
-
-// Wrong — buffer may not be flushed if $stream goes out of scope here
-$stream = new WritableResourceStream(fopen('/tmp/output.txt', 'wb'));
-$stream->write("Important data\n");
-// $stream goes out of scope — destructor calls close(), buffer is discarded
-
-// Correct — drain the buffer before releasing the stream
-$stream = new WritableResourceStream(fopen('/tmp/output.txt', 'wb'));
-$stream->write("Important data\n");
-$stream->on('finish', fn() => echo "All data flushed\n");
-$stream->end(); // drains the buffer, emits finish, then closes
-```
-
-With the promise-based API the lifecycle is more controlled. `writeAsync()` only
-resolves once the data is safely buffered, and `endAsync()` only resolves once the
-buffer has been fully drained and flushed to the underlying resource. If you always
-`await` these calls to completion, the stream has already done its work by the time
-it goes out of scope — the destructor calling `close()` at that point is just
-cleaning up an already-finished resource, not discarding anything.
-
-```php
-use Hibla\Stream\PromiseWritableStream;
-use function Hibla\await;
-
-$stream = new PromiseWritableStream(fopen('/tmp/output.txt', 'wb'));
-
-// writeAsync() resolves only when data is buffered
-await($stream->writeAsync("Important data\n"));
-
-// endAsync() resolves only when buffer is fully flushed
-// By the time this resolves the data is durably written —
-// the destructor has nothing left to discard
-await($stream->endAsync());
-```
-
-The warning about silent data loss applies specifically to the event-driven API where
-buffered data can exist at destruction time without any pending promise to signal it.
-With the promise-based API, as long as you await every write and end call to
-completion, the destructor is purely a resource handle cleanup and carries no risk of
-data loss.
-
-The destructor is a safety net for resource handles, not a substitute for explicit
-lifecycle management. Always close or end streams intentionally in code paths where
-the written data matters.
-
----
-
-## No-Op Behaviour
-
-All stream types are designed to be called defensively without needing to check state
-first. Redundant calls are silently ignored — no exceptions are thrown, no duplicate
-events fire. This makes cleanup paths, teardown logic, and pipe management
-straightforward to write without guarding every call.
-
-| Call | Condition | Behaviour |
-|---|---|---|
-| `pause()` | Stream already paused | No-op |
-| `pause()` | Stream closed | No-op |
-| `resume()` | Stream already flowing | No-op |
-| `resume()` | Stream closed | No-op |
-| `close()` | Stream already closed | No-op |
-| `end()` | Stream already ending | No-op |
-| `end()` | Stream already closed | No-op |
-| `write('')` | Any writable stream | No-op — returns `true`, no buffer interaction |
-| `writeAsync('')` | Any `PromiseWritableStream` | Resolves immediately with `0` |
-| `endAsync()` | Stream already ending or closed | Resolves immediately |
-| `readAsync()` | Stream already at EOF | Resolves immediately with `null` |
-| `pipe()` | Source not readable | No-op — returns destination unchanged |
-| `pipe()` | Destination not writable | Pauses source, returns destination unchanged |
-| `removeReadWatcher()` | Watcher already removed | No-op — returns `false` |
-| `removeWriteWatcher()` | Watcher already removed | No-op — returns `false` |
-
-The one exception is `write()` on a closed stream — this emits an `error` event and
-returns `false` rather than silently succeeding, because writing to a closed stream
-is almost always a logic error that should surface rather than be swallowed.
 
 ---
 
@@ -1482,16 +810,254 @@ On **Unix and macOS**, non-blocking mode is applied to sockets, pipes, STDIO han
 plain files, and in-memory streams (`php://memory`, `php://temp`).
 
 On **Windows**, non-blocking mode is only applied to socket and pipe resources. Plain
-files, STDIO handles (`STDIN`, `STDOUT`, `STDERR`), and in-memory streams are left in
-blocking mode because PHP's `stream_set_blocking()` has no effect on non-socket
-handles on Windows. This means that on Windows, reading from a file or writing to
-STDOUT through a Hibla stream will block the event loop for the duration of the
-operation — exactly as a raw `fread()` or `fwrite()` call would.
+files, STDIO handles, and in-memory streams are left in blocking mode because PHP's
+`stream_set_blocking()` has no effect on non-socket handles on Windows. This means
+that on Windows, reading from a file or writing to STDOUT through a Hibla stream will
+block the event loop for the duration of the operation — exactly as a raw `fread()` or
+`fwrite()` call would.
 
 If you are building an application that must run on Windows and needs truly
 non-blocking file or STDIO I/O, offload those operations to a worker process via
 `hiblaphp/parallel` rather than using stream watchers directly. Socket-based streams
 — TCP, UDP, Unix sockets — behave identically on all platforms.
+
+---
+
+## Stream Lifecycle and Events
+
+This section documents the exact sequence of events emitted by each stream type. It is
+reference material — understanding lifecycle order matters when you are implementing
+custom flow control, building protocol parsers, or debugging unexpected behaviour.
+
+### Readable stream lifecycle
+
+A `ReadableResourceStream` always starts paused. No watcher is registered, no data
+flows, and no events fire until `resume()` is called or a `data` listener is attached.
+```
+new ReadableResourceStream($resource)
+       │
+       ▼
+  ┌─────────┐
+  │  PAUSED │  ◄─── pause() called (or initial state)
+  └────┬────┘
+       │ resume()
+       ▼
+  ┌─────────┐
+  │ FLOWING │  ◄─── read watcher registered with event loop
+  └────┬────┘
+       │ data arrives
+       ├──────────────── emit('data', $chunk)    ← repeats each read
+       │
+       │ pause() called
+       ├──────────────── emit('pause')
+       │                 read watcher removed
+       │
+       │ EOF reached
+       ├──────────────── emit('end')
+       │                 emit('close')           ← always follows 'end'
+       │                 resource closed
+       │
+       │ read error
+       └──────────────── emit('error', $e)
+                         emit('close')           ← always follows 'error'
+                         resource closed
+```
+
+`end` and `close` are always emitted in that order on EOF. A read error skips `end`
+and goes directly to `close`. After `close`, all listeners are removed — any listener
+attached after `close` will never fire.
+```php
+$stream = new ReadableResourceStream(fopen('/var/log/app.log', 'rb'));
+
+$stream->on('data',  fn(string $chunk)  => echo $chunk);
+$stream->on('end',   fn()              => echo "Done reading\n");
+$stream->on('close', fn()              => echo "Stream closed\n");
+$stream->on('error', fn(\Throwable $e) => echo "Error: " . $e->getMessage() . "\n");
+
+$stream->resume();
+```
+
+### Writable stream lifecycle
+
+A `WritableResourceStream` is ready immediately — no `resume()` needed.
+```
+new WritableResourceStream($resource)
+       │
+       ▼
+  ┌──────────┐
+  │ WRITABLE │
+  └────┬─────┘
+       │ write($data) — data buffered, write watcher registered
+       │
+       │  buffer < softLimit  ──► write() returns true
+       │  buffer >= softLimit ──► write() returns false
+       │
+       │ write watcher drains the buffer
+       ├──────────────── emit('drain')
+       │
+       │ end() called
+       ├──────────────── emit('finish')
+       │                 emit('close')
+       │
+       │ write() on closed stream
+       └──────────────── emit('error', $e)
+```
+```php
+$stream = new WritableResourceStream(fopen('/tmp/output.log', 'wb'));
+
+$stream->on('drain',  fn()             => echo "Drained, can write again\n");
+$stream->on('finish', fn()             => echo "All data written\n");
+$stream->on('close',  fn()             => echo "Stream closed\n");
+$stream->on('error',  fn(\Throwable $e) => echo "Write error: " . $e->getMessage() . "\n");
+
+$stream->write("Hello\n");
+$stream->end("Goodbye\n");
+```
+
+### Pipe event flow
+
+`pipe()` coordinates `data`, `drain`, `end`, and `close` events between source and
+destination automatically:
+```
+ReadableResourceStream              WritableResourceStream
+       │                                    │
+  emit('data', $chunk) ──────────────────► write($chunk)
+       │
+       │             [buffer not full]
+       │         write() returns true ◄─────
+       │  keep flowing
+       │
+  emit('data', $chunk) ──────────────────► write($chunk)
+       │
+       │             [buffer now full]
+       │         write() returns false ◄────
+  pause() ◄──────────────────────────────── STOP SOURCE
+       │
+       │  [event loop drains the buffer]
+       │                           emit('drain')
+       │  ◄── resume() ────────────────────┘
+       │  [flowing again]
+       │
+  emit('end') ───────────────────────────► end()
+       │                              emit('finish')
+       │                              emit('close')
+```
+
+### `ThroughStream` event flow
+
+`ThroughStream` is both a writable (receives `write()` calls) and a readable (emits
+`data` events). Unlike resource-backed streams, it has no I/O watcher — the event
+loop is not involved.
+```
+Upstream writes          ThroughStream          Downstream reads
+     │                        │                        │
+     │  write($chunk)         │                        │
+     ├───────────────────────►│                        │
+     │                 [transform($chunk)]             │
+     │                  emit('data', $result) ────────►│
+     │                        │                        │
+     │  end($final)           │                        │
+     ├───────────────────────►│                        │
+     │                  emit('data', $transformed)     │
+     │                  emit('end')                    │
+     │                  emit('finish')                 │
+     │                  emit('close')                  │
+     │                        │                        │
+     │  transformer throws    │                        │
+     │                  emit('error', $e)              │
+     │                  emit('close')                  │
+```
+
+### `CompositeStream` and `DuplexResourceStream` events
+
+Both are wrappers around underlying streams. Their events are forwarded from the inner
+streams, not re-emitted independently.
+
+The `close` event on a `CompositeStream` fires only when **both** inner streams have
+closed. On a `DuplexResourceStream`, `close` fires as soon as either side closes
+because both share the same underlying resource.
+
+### Error event behaviour
+
+Both readable and writable streams follow the same rule: an `error` event is always
+followed by `close`. The stream closes itself after emitting `error`. You do not need
+to call `close()` inside an error handler.
+```php
+// CORRECT — just handle the error; close fires on its own
+$stream->on('error', function (\Throwable $e) {
+    echo "Error: " . $e->getMessage() . "\n";
+});
+
+$stream->on('close', function () {
+    cleanupResources();
+});
+```
+
+---
+
+## No-Op Behaviour
+
+All stream types are designed to be called defensively without needing to check state
+first. Redundant calls are silently ignored — no exceptions are thrown, no duplicate
+events fire.
+
+| Call | Condition | Behaviour |
+|---|---|---|
+| `pause()` | Stream already paused or closed | No-op |
+| `resume()` | Stream already flowing or closed | No-op |
+| `close()` | Stream already closed | No-op |
+| `end()` | Stream already ending or closed | No-op |
+| `write('')` | Any writable stream | No-op — returns `true`, no buffer interaction |
+| `writeAsync('')` | Any `PromiseWritableStream` | Resolves immediately with `0` |
+| `endAsync()` | Stream already ending or closed | Resolves immediately |
+| `readAsync()` | Stream already at EOF | Resolves immediately with `null` |
+| `pipe()` | Source not readable | No-op — returns destination unchanged |
+| `pipe()` | Destination not writable | Pauses source, returns destination unchanged |
+| `removeReadWatcher()` | Watcher already removed | No-op — returns `false` |
+| `removeWriteWatcher()` | Watcher already removed | No-op — returns `false` |
+
+The one exception is `write()` on a closed stream — this emits an `error` event and
+returns `false` rather than silently succeeding, because writing to a closed stream is
+almost always a logic error that should surface rather than be swallowed.
+
+---
+
+## Resource Cleanup and Destructors
+
+All stream classes implement `__destruct`. If the stream has not been explicitly
+closed by the time the object is garbage collected, the destructor calls `close()`
+automatically to free the underlying resource. Stream resources are never silently
+leaked.
+
+However, the destructor calls `close()` directly — it does not call `end()` first.
+For writable streams this has an important consequence: **any data still buffered at
+destruction time is discarded and the `finish` event never fires.** If you rely on
+`finish` to confirm that all data has been flushed, always call `end()` or `endAsync()`
+explicitly before letting the stream go out of scope.
+```php
+// Wrong — buffer may be discarded if $stream goes out of scope
+$stream = new WritableResourceStream(fopen('/tmp/output.txt', 'wb'));
+$stream->write("Important data\n");
+// $stream goes out of scope — destructor calls close(), buffer is discarded
+
+// Correct — drain the buffer before releasing the stream
+$stream = new WritableResourceStream(fopen('/tmp/output.txt', 'wb'));
+$stream->on('finish', fn() => echo "All data flushed\n");
+$stream->write("Important data\n");
+$stream->end();
+```
+
+With the promise-based API this risk is eliminated as long as you await every write
+and end call to completion. By the time `endAsync()` resolves, all data is durably
+written and the destructor has nothing left to discard:
+```php
+$stream = new PromiseWritableStream(fopen('/tmp/output.txt', 'wb'));
+await($stream->writeAsync("Important data\n"));
+await($stream->endAsync()); // all data flushed before this resolves
+```
+
+The destructor is a safety net for resource handles, not a substitute for explicit
+lifecycle management.
 
 ---
 
@@ -1523,10 +1089,6 @@ non-blocking file or STDIO I/O, offload those operations to a worker process via
 
 ### `Stream` factory
 
-A static convenience wrapper around the stream constructors. Useful for quick scripts
-and one-off usage — prefer direct instantiation in application code and dependency
-injection contexts.
-
 | Method | Returns | Description |
 |---|---|---|
 | `Stream::readable($resource, $chunkSize)` | `ReadableResourceStream` | Wrap a readable resource |
@@ -1554,7 +1116,7 @@ injection contexts.
 
 ### `ReadableResourceStream`
 
-Extends `ReadableStreamInterface` with the following additional methods:
+Extends `ReadableStreamInterface` with:
 
 | Method | Returns | Description |
 |---|---|---|
@@ -1574,7 +1136,7 @@ Extends `ReadableStreamInterface` with the following additional methods:
 
 ### `WritableResourceStream`
 
-Extends `WritableStreamInterface` with the following additional method:
+Extends `WritableStreamInterface` with:
 
 | Method | Returns | Description |
 |---|---|---|
@@ -1584,34 +1146,27 @@ Extends `WritableStreamInterface` with the following additional method:
 
 | Method | Returns | Description |
 |---|---|---|
-| `readAsync($length)` | `PromiseInterface<string\|null>` | Read a chunk. Resolves immediately with `null` if already at EOF. Supports cancellation |
-| `readLineAsync($maxLength)` | `PromiseInterface<string\|null>` | Read until `\n` or `$maxLength`. Resolves immediately with `null` if already at EOF. Supports cancellation |
+| `readAsync($length)` | `PromiseInterface<string\|null>` | Read a chunk. Resolves with `null` at EOF. Supports cancellation |
+| `readLineAsync($maxLength)` | `PromiseInterface<string\|null>` | Read until `\n` or `$maxLength`. Resolves with `null` at EOF. Supports cancellation |
 | `readAllAsync($maxLength)` | `PromiseInterface<string>` | Read entire stream into a string. Supports cancellation |
-| `pipeAsync($destination, $options)` | `PromiseInterface<int>` | Pipe to a writable stream. Resolves with total bytes transferred. Backpressure handled internally. Supports cancellation |
+| `pipeAsync($destination, $options)` | `PromiseInterface<int>` | Pipe to a writable stream. Resolves with total bytes transferred. Supports cancellation |
 
 ### `PromiseWritableStreamInterface`
 
 | Method | Returns | Description |
 |---|---|---|
-| `writeAsync($data)` | `PromiseInterface<int>` | Write data. Waits for `drain` automatically if buffer is full. Resolves immediately with `0` if `$data` is empty. Supports cancellation |
+| `writeAsync($data)` | `PromiseInterface<int>` | Write data. Waits for `drain` if buffer is full. Resolves with `0` if `$data` is empty. Supports cancellation |
 | `writeLineAsync($data)` | `PromiseInterface<int>` | Write data with an appended `\n`. Supports cancellation |
 | `endAsync($data)` | `PromiseInterface<void>` | End the stream. Resolves when all buffered data is flushed. Resolves immediately if already ending or closed. Supports cancellation |
 
 ---
 
 ## Development
-
 ```bash
 git clone https://github.com/hiblaphp/stream.git
 cd stream
 composer install
-```
-
-```bash
 ./vendor/bin/pest
-```
-
-```bash
 ./vendor/bin/phpstan analyse
 ```
 
@@ -1619,7 +1174,10 @@ composer install
 
 ## Credits
 
-- **API Design:** Inspired by the [ReactPHP Streams](https://github.com/reactphp/stream) interface. If you are familiar with ReactPHP's stream API, Hibla's will feel immediately familiar — with the addition of native promise-based methods and Fiber-aware I/O.
+- **API Design:** Inspired by the [ReactPHP Streams](https://github.com/reactphp/stream)
+  interface. If you are familiar with ReactPHP's stream API, Hibla's will feel
+  immediately familiar — with the addition of native promise-based methods and
+  Fiber-aware I/O.
 - **Event Emitter:** Built on [evenement/evenement](https://github.com/igorw/evenement).
 - **Event Loop Integration:** Powered by [hiblaphp/event-loop](https://github.com/hiblaphp/event-loop).
 - **Promise Integration:** Built on [hiblaphp/promise](https://github.com/hiblaphp/promise).
