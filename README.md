@@ -746,7 +746,7 @@ try {
 }
 ```
 
-For structured cancellation across multiple operations, use `CancellationTokenSource`:
+For structured cancellation across multiple operations, use `CancellationTokenSource` from `hiblaphp/cancellation`:
 ```php
 use Hibla\Cancellation\CancellationTokenSource;
 use function Hibla\await;
