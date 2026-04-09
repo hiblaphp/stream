@@ -7,6 +7,4 @@ namespace Hibla\Stream\Interfaces;
 /**
  * A readable stream that additionally exposes a promise-based API.
  */
-interface PromiseReadableStreamInterface extends ReadableStreamInterface, PromiseReadableInterface
-{
-}
+interface PromiseReadableStreamInterface extends ReadableStreamInterface, PromiseReadableInterface, PromisePipableInterface {}

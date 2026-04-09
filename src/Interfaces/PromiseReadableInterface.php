@@ -35,14 +35,4 @@ interface PromiseReadableInterface
      * @return PromiseInterface<string> Resolves with the complete contents of the stream.
      */
     public function readAllAsync(int $maxLength = 1048576): PromiseInterface;
-
-    /**
-     * Forwards all data from this stream to a destination, automatically handling backpressure.
-     * This is a highly efficient way to transfer data between streams.
-     *
-     * @param WritableStreamInterface $destination The stream to receive the data.
-     * @param array{end?: bool} $options Configure piping behavior, such as whether to end the destination stream.
-     * @return PromiseInterface<int> Resolves with the total number of bytes piped.
-     */
-    public function pipeAsync(WritableStreamInterface $destination, array $options = []): PromiseInterface;
 }
