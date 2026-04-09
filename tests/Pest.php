@@ -35,6 +35,7 @@ function createSocketPair(): array
 
     if (! $client) {
         fclose($server);
+
         throw new RuntimeException("Failed to create client socket: $errstr");
     }
 
@@ -42,6 +43,7 @@ function createSocketPair(): array
     if (! $accepted) {
         fclose($client);
         fclose($server);
+
         throw new RuntimeException('Failed to accept connection');
     }
 

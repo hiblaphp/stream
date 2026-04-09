@@ -81,7 +81,7 @@ class ReadableResourceStream extends EventEmitter implements ReadableStreamInter
      */
     public function pause(): void
     {
-        if (!$this->readable || $this->paused || $this->closed) {
+        if (! $this->readable || $this->paused || $this->closed) {
             return;
         }
 
@@ -192,7 +192,7 @@ class ReadableResourceStream extends EventEmitter implements ReadableStreamInter
 
         $this->handler->stopWatching();
 
-        if (!$this->paused) {
+        if (! $this->paused) {
             $this->paused = true;
             $this->emit('pause');
         }
@@ -261,7 +261,7 @@ class ReadableResourceStream extends EventEmitter implements ReadableStreamInter
                 }
             },
             $this->close(...),
-            fn() => \is_resource($resource) && feof($resource),
+            fn () => \is_resource($resource) && feof($resource),
             $this->pause(...),
             $this->isPaused(...),
             $this->hasListeners(...)

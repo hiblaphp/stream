@@ -58,7 +58,7 @@ class PromiseWritableStream extends WritableResourceStream implements PromiseWri
 
         /** @var Promise<int> $promise */
         $promise = new Promise();
-        
+
         $handler->queueWrite($promise, $bytesToWrite);
 
         $promise->onCancel(function () use ($promise, $handler): void {

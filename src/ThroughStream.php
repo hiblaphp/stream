@@ -20,7 +20,7 @@ class ThroughStream extends EventEmitter implements DuplexStreamInterface
     private bool $closed = false;
 
     private bool $paused = false;
-    
+
     private bool $ending = false;
 
     /**

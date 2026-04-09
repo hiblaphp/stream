@@ -11,8 +11,8 @@ use Hibla\Stream\Exceptions\StreamException;
 
 class WritableStreamHandler
 {
-    /** 
-     * @var array<int, array{promise: Promise<int>, bytes: int}> 
+    /**
+     * @var array<int, array{promise: Promise<int>, bytes: int}>
      */
     private array $writeQueue = [];
 
@@ -34,7 +34,8 @@ class WritableStreamHandler
         private $emitCallback,
         private $closeCallback,
         private $isEndingCallback
-    ) {}
+    ) {
+    }
 
     public function getBufferLength(): int
     {
@@ -52,7 +53,7 @@ class WritableStreamHandler
     }
 
     /**
-     * @param Promise<int> $promise 
+     * @param Promise<int> $promise
      * @param int $bytesToWrite
      */
     public function queueWrite(Promise $promise, int $bytesToWrite): void
@@ -68,6 +69,7 @@ class WritableStreamHandler
         foreach ($this->writeQueue as $index => $item) {
             if ($item['promise'] === $promise) {
                 unset($this->writeQueue[$index]);
+
                 return;
             }
         }
@@ -85,7 +87,7 @@ class WritableStreamHandler
 
         $this->watcherId = Loop::addWriteWatcher(
             $this->resource,
-            fn() => $this->handleWritable(),
+            fn () => $this->handleWritable(),
         );
     }
 
@@ -107,7 +109,6 @@ class WritableStreamHandler
 
         if ($written === false || $written === 0) {
             $error = new StreamException('Failed to write to stream');
-
 
             ($this->emitCallback)('error', $error);
 
@@ -160,7 +161,7 @@ class WritableStreamHandler
         $this->writeQueue = [];
 
         foreach ($queue as $item) {
-            if (!$item['promise']->isCancelled()) {
+            if (! $item['promise']->isCancelled()) {
                 $item['promise']->reject($error);
             }
         }
@@ -176,7 +177,7 @@ class WritableStreamHandler
         $this->writeQueue = [];
 
         foreach ($queue as $item) {
-            if (!$item['promise']->isCancelled()) {
+            if (! $item['promise']->isCancelled()) {
                 $item['promise']->resolve($item['bytes']);
             }
         }

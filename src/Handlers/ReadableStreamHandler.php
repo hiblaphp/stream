@@ -36,7 +36,8 @@ class ReadableStreamHandler
         private $pauseCallback,
         private $isPausedCallback,
         private $hasListenersCallback
-    ) {}
+    ) {
+    }
 
     public function getBuffer(): string
     {
@@ -69,8 +70,8 @@ class ReadableStreamHandler
     public function queueRead(?int $length, Promise $promise): void
     {
         $this->readQueue[] = [
-            'resolve' => fn(string|null $value) => $promise->resolve($value),
-            'reject' => fn(\Throwable $reason) => $promise->reject($reason),
+            'resolve' => fn (string|null $value) => $promise->resolve($value),
+            'reject' => fn (\Throwable $reason) => $promise->reject($reason),
             'length' => $length ?? $this->chunkSize,
             'promise' => $promise,
         ];
@@ -112,7 +113,7 @@ class ReadableStreamHandler
 
         $this->watcherId = Loop::addReadWatcher(
             $this->resource,
-            fn() => $this->handleReadable(),
+            fn () => $this->handleReadable(),
         );
     }
 
