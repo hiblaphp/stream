@@ -10,6 +10,8 @@ tracked automatically: when a writable buffer fills, `write()` returns `false` a
 together without any manual coordination.
 
 [![Latest Release](https://img.shields.io/github/release/hiblaphp/stream.svg?style=flat-square)](https://github.com/hiblaphp/stream/releases)
+[![Tests](https://github.com/hiblaphp/stream/actions/workflows/test.yml/badge.svg)](https://github.com/hiblaphp/stream/actions/workflows/test.yml)
+[![Total Downloads](https://img.shields.io/packagist/dt/hiblaphp/stream.svg?style=flat-square)](https://packagist.org/packages/hiblaphp/stream)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](./LICENSE)
 
 ---
