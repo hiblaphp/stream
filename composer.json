@@ -1,12 +1,12 @@
 {
     "name": "hiblaphp/stream",
     "type": "library",
+    "description": "A PHP library for working with non-blocking streams of data",
     "license": "MIT",
-    "minimum-stability": "dev",
     "prefer-stable": true,
     "require": {
-        "hiblaphp/event-loop": "dev-main",
-        "hiblaphp/promise": "dev-main",
+        "hiblaphp/event-loop": "^1.0@alpha",
+        "hiblaphp/promise": "^1.0@alpha",
         "evenement/evenement": "^3.0"
     },
     "autoload": {
