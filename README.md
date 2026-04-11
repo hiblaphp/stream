@@ -79,12 +79,12 @@ together without any manual coordination.
 > This library is currently in its Alpha development phase. You can install the library via Composer by explicitly allowing alpha stability:
 
 ```bash
-composer require hiblaphp/stream:^1.0@alpha
+composer require hiblaphp/stream:"^1.0@alpha"
 ```
 
 **Requirements:**
 
-- PHP 8.3+
+- PHP 8.4+
 - `hiblaphp/event-loop`
 - `hiblaphp/promise`
 - `evenement/evenement`
