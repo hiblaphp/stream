@@ -3,10 +3,11 @@
     "type": "library",
     "description": "A PHP library for working with non-blocking streams of data",
     "license": "MIT",
+    "minimum-stability": "alpha",
     "prefer-stable": true,
     "require": {
-        "hiblaphp/event-loop": "^1.0@alpha",
-        "hiblaphp/promise": "^1.0@alpha",
+        "hiblaphp/event-loop": "^1.0",
+        "hiblaphp/promise": "^1.0",
         "evenement/evenement": "^3.0"
     },
     "autoload": {
