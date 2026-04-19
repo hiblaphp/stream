@@ -76,18 +76,22 @@ together without any manual coordination.
 
 ## Installation
 
-> This library is currently in its Alpha development phase. You can install the library via Composer by explicitly allowing alpha stability:
+>This package is currently in **beta**. Before installing, ensure your `composer.json`
+allows beta releases:
+
+```json
+{
+    "minimum-stability": "beta",
+    "prefer-stable": true
+}
+```
 
 ```bash
-composer require hiblaphp/stream:"^1.0@alpha"
+composer require hiblaphp/stream
 ```
 
 **Requirements:**
-
-- PHP 8.4+
-- `hiblaphp/event-loop`
-- `hiblaphp/promise`
-- `evenement/evenement`
+- PHP 8.4+ 
 
 ---
 
