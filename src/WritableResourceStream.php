@@ -11,12 +11,17 @@ use Hibla\Stream\Interfaces\WritableStreamInterface;
 
 class WritableResourceStream extends EventEmitter implements WritableStreamInterface
 {
-    /** @var resource|null The underlying stream resource. */
+    /**
+     * @var resource|null The underlying stream resource.
+     */
     private $resource;
 
     private bool $writable = true;
+
     private bool $closed = false;
+
     private bool $ending = false;
+
     private int $softLimit;
 
     private WritableStreamHandler $handler;

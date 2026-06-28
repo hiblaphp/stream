@@ -16,6 +16,7 @@ interface PromiseReadableInterface
      * Asynchronously reads a chunk of data. The promise resolves with the data when available.
      *
      * @param int|null $length Maximum bytes to read. Defaults to the stream's preferred chunk size.
+     *
      * @return PromiseInterface<string|null> Resolves with data, or null if the stream has ended.
      */
     public function readAsync(?int $length = null): PromiseInterface;
@@ -24,6 +25,7 @@ interface PromiseReadableInterface
      * Asynchronously reads data until a newline character is encountered.
      *
      * @param int|null $maxLength A safeguard to limit the line length.
+     *
      * @return PromiseInterface<string|null> Resolves with the line, including the newline character.
      */
     public function readLineAsync(?int $maxLength = null): PromiseInterface;
@@ -32,6 +34,7 @@ interface PromiseReadableInterface
      * Asynchronously reads the entire stream into a single string until its end.
      *
      * @param int $maxLength A safeguard to prevent excessive memory usage.
+     *
      * @return PromiseInterface<string> Resolves with the complete contents of the stream.
      */
     public function readAllAsync(int $maxLength = 1048576): PromiseInterface;

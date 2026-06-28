@@ -15,6 +15,7 @@ use Hibla\Stream\Interfaces\WritableStreamInterface;
 class PromiseReadableStream extends ReadableResourceStream implements PromiseReadableStreamInterface
 {
     private ReadLineHandler $lineHandler;
+
     private ReadAllHandler $allHandler;
 
     /**
@@ -34,6 +35,7 @@ class PromiseReadableStream extends ReadableResourceStream implements PromiseRea
      *
      * @param resource $resource A readable PHP stream resource
      * @param int $chunkSize The default amount of data to read in a single operation
+     *
      * @return self
      */
     public static function fromResource($resource, int $chunkSize = 65536): self
@@ -146,7 +148,7 @@ class PromiseReadableStream extends ReadableResourceStream implements PromiseRea
             }
 
             $feedMore = $destination->write($data);
-            $totalBytes += strlen($data);
+            $totalBytes += \strlen($data);
 
             if (false === $feedMore) {
                 $this->pause();
@@ -163,10 +165,10 @@ class PromiseReadableStream extends ReadableResourceStream implements PromiseRea
             $this->detachPipeHandlers($destination, $dataHandler, $endHandler, $errorHandler, $closeHandler);
 
             if ($endDestination) {
-                $destination->end();
                 $destination->once('finish', function () use ($promise, &$totalBytes): void {
                     $promise->resolve($totalBytes);
                 });
+                $destination->end();
             } else {
                 $promise->resolve($totalBytes);
             }

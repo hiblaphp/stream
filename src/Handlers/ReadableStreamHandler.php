@@ -11,12 +11,18 @@ use Hibla\Stream\Exceptions\StreamException;
 
 class ReadableStreamHandler
 {
-    /** @var array<array{resolve: callable(string|null): void, reject: callable(\Throwable): void, length: int, promise: PromiseInterface<string|null>}> */
+    /**
+     * @var array<array{resolve: callable(string|null): void, reject: callable(\Throwable): void, length: int, promise: PromiseInterface<string|null>}>
+     */
     private array $readQueue = [];
 
     private string $buffer = '';
 
     private ?string $watcherId = null;
+
+    private bool $isPlainFile = false;
+
+    private bool $filePollingActive = false;
 
     /**
      * @param resource $resource
@@ -37,6 +43,9 @@ class ReadableStreamHandler
         private $isPausedCallback,
         private $hasListenersCallback
     ) {
+        $meta = stream_get_meta_data($this->resource);
+
+        $this->isPlainFile = $meta['seekable'];
     }
 
     public function getBuffer(): string
@@ -111,17 +120,45 @@ class ReadableStreamHandler
             return;
         }
 
+        if ($this->isPlainFile) {
+            $this->watcherId = 'file_poll';
+            if (! $this->filePollingActive) {
+                $this->filePollingActive = true;
+                Loop::addTimer(0, $this->pollFile(...));
+            }
+
+            return;
+        }
+
         $this->watcherId = Loop::addReadWatcher(
             $this->resource,
-            fn () => $this->handleReadable(),
+            $this->handleReadable(...)
         );
     }
 
     public function stopWatching(): void
     {
         if ($this->watcherId !== null) {
-            Loop::removeReadWatcher($this->watcherId);
-            $this->watcherId = null;
+            if ($this->isPlainFile) {
+                $this->watcherId = null;
+                $this->filePollingActive = false;
+            } else {
+                Loop::removeReadWatcher($this->watcherId);
+                $this->watcherId = null;
+            }
+        }
+    }
+
+    private function pollFile(): void
+    {
+        if (! $this->filePollingActive || $this->watcherId === null) {
+            return;
+        }
+
+        $this->handleReadable();
+
+        if ($this->watcherId !== null && $this->filePollingActive) {
+            Loop::addTimer(0, $this->pollFile(...));
         }
     }
 

@@ -12,7 +12,9 @@ use Hibla\Stream\Interfaces\WritableStreamInterface;
 class DuplexResourceStream extends EventEmitter implements DuplexStreamInterface
 {
     private ReadableResourceStream $readable;
+
     private WritableResourceStream $writable;
+
     private bool $closed = false;
 
     /**

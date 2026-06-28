@@ -16,7 +16,9 @@ use Hibla\Stream\Interfaces\WritableStreamInterface;
 class CompositeStream extends EventEmitter implements DuplexStreamInterface
 {
     private ReadableStreamInterface $readable;
+
     private WritableStreamInterface $writable;
+
     private bool $closed = false;
 
     /**

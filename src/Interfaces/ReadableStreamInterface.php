@@ -20,6 +20,7 @@ interface ReadableStreamInterface extends EventEmitterInterface
      *
      * @param WritableStreamInterface $destination The stream to receive the data.
      * @param array{end?: bool} $options Configure piping behavior. Set 'end' to false to keep destination open after source ends.
+     *
      * @return WritableStreamInterface Returns the destination stream for chaining
      */
     public function pipe(WritableStreamInterface $destination, array $options = []): WritableStreamInterface;

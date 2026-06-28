@@ -15,6 +15,7 @@ final class Util
      * @param ReadableStreamInterface $source
      * @param WritableStreamInterface $dest
      * @param array{end?:bool} $options
+     *
      * @return WritableStreamInterface $dest stream as-is
      */
     public static function pipe(ReadableStreamInterface $source, WritableStreamInterface $dest, array $options = []): WritableStreamInterface
@@ -79,6 +80,7 @@ final class Util
      * @param ReadableStreamInterface|WritableStreamInterface $source
      * @param ReadableStreamInterface|WritableStreamInterface $target
      * @param string[] $events
+     *
      * @return void
      */
     public static function forwardEvents($source, $target, array $events): void

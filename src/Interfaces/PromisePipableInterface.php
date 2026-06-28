@@ -18,6 +18,7 @@ interface PromisePipableInterface
      *
      * @param WritableStreamInterface $destination The stream to receive the data.
      * @param array{end?: bool} $options Configure piping behavior, such as whether to end the destination stream.
+     *
      * @return PromiseInterface<int> Resolves with the total number of bytes piped.
      */
     public function pipeAsync(WritableStreamInterface $destination, array $options = []): PromiseInterface;

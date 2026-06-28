@@ -27,6 +27,7 @@ class PromiseWritableStream extends WritableResourceStream implements PromiseWri
      *
      * @param resource $resource A writable PHP stream resource
      * @param int $softLimit The size of the write buffer (in bytes) at which backpressure is applied
+     *
      * @return self
      */
     public static function fromResource($resource, int $softLimit = 65536): self

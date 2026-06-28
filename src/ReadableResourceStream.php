@@ -12,7 +12,9 @@ use Hibla\Stream\Interfaces\WritableStreamInterface;
 
 class ReadableResourceStream extends EventEmitter implements ReadableStreamInterface
 {
-    /** @var resource|null The underlying stream resource. */
+    /**
+     * @var resource|null The underlying stream resource.
+     */
     private $resource;
 
     private int $chunkSize;
@@ -117,7 +119,7 @@ class ReadableResourceStream extends EventEmitter implements ReadableStreamInter
      */
     public function isEof(): bool
     {
-        return $this->eof || ($this->resource !== null && is_resource($this->resource) && feof($this->resource));
+        return $this->eof || ($this->resource !== null && \is_resource($this->resource) && feof($this->resource));
     }
 
     /**
@@ -163,6 +165,7 @@ class ReadableResourceStream extends EventEmitter implements ReadableStreamInter
      * Get the current position in the stream.
      *
      * @return int|false The current position, or false on failure
+     *
      * @throws StreamException If the stream is closed or the resource is invalid
      */
     public function tell(): int|false

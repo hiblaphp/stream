@@ -22,6 +22,10 @@ class WritableStreamHandler
 
     private ?string $watcherId = null;
 
+    private bool $isPlainFile = false;
+
+    private bool $filePollingActive = false;
+
     /**
      * @param resource $resource
      * @param callable(string, mixed=): void $emitCallback
@@ -35,6 +39,9 @@ class WritableStreamHandler
         private $closeCallback,
         private $isEndingCallback
     ) {
+        $meta = stream_get_meta_data($this->resource);
+
+        $this->isPlainFile = $meta['seekable'];
     }
 
     public function getBufferLength(): int
@@ -85,6 +92,17 @@ class WritableStreamHandler
             return;
         }
 
+        // If it's a local file, handle writing asynchronously via the timer queue
+        if ($this->isPlainFile) {
+            $this->watcherId = 'file_poll';
+            if (! $this->filePollingActive) {
+                $this->filePollingActive = true;
+                Loop::addTimer(0.0, $this->pollFile(...));
+            }
+
+            return;
+        }
+
         $this->watcherId = Loop::addWriteWatcher(
             $this->resource,
             fn () => $this->handleWritable(),
@@ -94,8 +112,26 @@ class WritableStreamHandler
     public function stopWatching(): void
     {
         if ($this->watcherId !== null) {
-            Loop::removeWriteWatcher($this->watcherId);
-            $this->watcherId = null;
+            if ($this->isPlainFile) {
+                $this->watcherId = null;
+                $this->filePollingActive = false;
+            } else {
+                Loop::removeWriteWatcher($this->watcherId);
+                $this->watcherId = null;
+            }
+        }
+    }
+
+    private function pollFile(): void
+    {
+        if (! $this->filePollingActive || $this->watcherId === null) {
+            return;
+        }
+
+        $this->handleWritable();
+
+        if ($this->watcherId !== null && $this->filePollingActive) {
+            Loop::addTimer(0.0, $this->pollFile(...));
         }
     }
 
