@@ -846,6 +846,24 @@ $stdio->resume();
 
 ## Platform Notes
 
+### Local File I/O and `ext-uv`
+
+At the operating system level, standard disk files do not support true non-blocking I/O via kernel network selectors (like `epoll` or `uv_poll`). Historically, attempting to poll a local file handle (such as one created via `fopen()`) using the `ext-uv` driver would result in errors or segmentation faults.
+
+**Hibla solves this automatically.** When the stream library detects a local disk file (a `seekable` resource), it safely bypasses the standard network watchers. Instead, it utilizes **Cooperative Time-Slicing**:
+
+1. It reads or writes exactly one chunk (e.g., 64KB) using standard synchronous `fread()` or `fwrite()` calls for file handles. At the hardware level, this is a "micro-block" taking only a few microseconds.
+2. It instantly yields control back to the Event Loop, scheduling the next chunk to be processed in the timer queue.
+
+**Why this matters:**
+This guarantees that **a single massive file stream will never block your application.** You can stream a 50GB file opened via `fopen()`, and the event loop will perfectly interleave the underlying `fread()`/`fwrite()` operations with your other active network sockets, incoming HTTP requests, and Fibers without ever starving the loop. 
+
+**The limits of single-threaded disk hardware:**
+While the execution perfectly interleaves, developers should note that because PHP executes on a single thread, reading and writing actual files on disk is technically "fake-async" at the hardware level. 
+If you stream 5 large files *concurrently* to a physical disk, they will perfectly interleave in the logs, but the total execution time will be roughly the same (or slightly slower due to SSD random-write fragmentation) as streaming them *sequentially*. 
+
+If you require true parallel disk I/O to maximize SSD hardware throughput, use `hiblaphp/parallel` to offload this work to a worker process.
+
 ### Windows non-blocking limitations
 
 Non-blocking mode is set automatically on stream construction, but the stream types
