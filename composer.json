@@ -2,6 +2,12 @@
     "name": "hiblaphp/stream",
     "type": "library",
     "description": "A PHP library for working with non-blocking streams of data",
+    "authors": [
+        {
+            "name": "Reymart A. Calicdan",
+            "email": "reymartcalicdan@gmail.com"
+        }
+    ],
     "license": "MIT",
     "minimum-stability": "alpha",
     "prefer-stable": true,
