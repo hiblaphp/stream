@@ -6,6 +6,7 @@
     "minimum-stability": "alpha",
     "prefer-stable": true,
     "require": {
+        "php": "^8.4",
         "hiblaphp/event-loop": "^1.0",
         "hiblaphp/promise": "^1.0",
         "evenement/evenement": "^3.0"
