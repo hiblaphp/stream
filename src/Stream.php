@@ -7,6 +7,7 @@ namespace Hibla\Stream;
 use Hibla\Stream\Exceptions\StreamException;
 use Hibla\Stream\Interfaces\DuplexStreamInterface;
 use Hibla\Stream\Interfaces\ReadableStreamInterface;
+use Hibla\Stream\Interfaces\SeekableStreamInterface;
 use Hibla\Stream\Interfaces\WritableStreamInterface;
 
 class Stream
@@ -15,7 +16,7 @@ class Stream
      * Creates a stream to process a file's contents without loading the entire file into memory.
      * This is ideal for reading large files asynchronously.
      */
-    public static function readableFile(string $path, int $chunkSize = 65536): ReadableStreamInterface
+    public static function readableFile(string $path, int $chunkSize = 65536): SeekableStreamInterface
     {
         $resource = @fopen($path, 'rb');
 

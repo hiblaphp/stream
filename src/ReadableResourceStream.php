@@ -7,10 +7,10 @@ namespace Hibla\Stream;
 use Evenement\EventEmitter;
 use Hibla\Stream\Exceptions\StreamException;
 use Hibla\Stream\Handlers\ReadableStreamHandler;
-use Hibla\Stream\Interfaces\ReadableStreamInterface;
+use Hibla\Stream\Interfaces\SeekableStreamInterface;
 use Hibla\Stream\Interfaces\WritableStreamInterface;
 
-class ReadableResourceStream extends EventEmitter implements ReadableStreamInterface
+class ReadableResourceStream extends EventEmitter implements SeekableStreamInterface
 {
     /**
      * @var resource|null The underlying stream resource.

@@ -130,6 +130,8 @@ moves through the entire Hibla stack.
 
 ## Stream Types
 
+### Implementation Classes
+
 | Class                    | Direction    | Use case                                                                                                 |
 | ------------------------ | ------------ | -------------------------------------------------------------------------------------------------------- |
 | `ReadableResourceStream` | Read         | Event-driven reads from any readable PHP resource                                                        |
@@ -139,6 +141,13 @@ moves through the entire Hibla stack.
 | `ThroughStream`          | Read + Write | In-line transformer: data written in is emitted out, optionally transformed                              |
 | `PromiseReadableStream`  | Read         | `ReadableResourceStream` extended with `readAsync()`, `readLineAsync()`, `readAllAsync()`, `pipeAsync()` |
 | `PromiseWritableStream`  | Write        | `WritableResourceStream` extended with `writeAsync()`, `writeLineAsync()`, `endAsync()`                  |
+
+### Core Interfaces
+To maximize architectural freedom and adhere to the **Interface Segregation Principle (ISP)**, capabilities are split into focused contracts:
+* **`ReadableStreamInterface`**: Focuses purely on event-driven reading, flow control, and piping.
+* **`SeekableStreamInterface`**: Extends reading with pointer repositioning (`seek`) and position reporting (`tell`). Ideal for files.
+* **`WritableStreamInterface`**: Focuses on event-driven, non-blocking writing and backpressure control.
+* **`DuplexStreamInterface`**: Combines both readable and writable interfaces.
 
 ---
 
@@ -229,7 +238,7 @@ cases like opening files and wrapping standard I/O handles:
 ```php
 use Hibla\Stream\Stream;
 
-$readable = Stream::readableFile('/path/to/input.log');
+$readable = Stream::readableFile('/path/to/input.log'); // SeekableStreamInterface
 $writable = Stream::writableFile('/path/to/output.log');
 $stdin    = Stream::stdin();
 $stdout   = Stream::stdout();
@@ -288,13 +297,12 @@ $stream->on('data', function (string $chunk) use ($stream) {
 
 ### Seeking and telling
 
-`ReadableResourceStream` exposes `seek()` and `tell()` for seekable resources such as
-files. `seek()` repositions the internal pointer, clears the read-ahead buffer, and
-resets the EOF flag, meaning data will flow again from the new position even if the
-stream had previously reached the end.
+Streams representing local disk files or seekable resources implement the **`SeekableStreamInterface`**. This guarantees safe pointer operations (`seek()` and `tell()`) at the interface level, making it highly respected by static analyzers like PHPStan.
+
+`seek()` reposition the internal pointer, clears the read-ahead buffer, and resets the EOF flag, meaning data will flow again from the new position even if the stream had previously reached the end.
 
 ```php
-$stream = new ReadableResourceStream(fopen('/tmp/data.bin', 'rb'));
+$stream = new ReadableResourceStream(fopen('/tmp/data.bin', 'rb')); // Implements SeekableStreamInterface
 
 $stream->on('data', function (string $chunk) use ($stream) {
     echo "Read: " . strlen($chunk) . " bytes\n";
@@ -303,13 +311,12 @@ $stream->on('data', function (string $chunk) use ($stream) {
 
 $stream->resume();
 
-// Rewind to the beginning and read again
+// Rewind to the beginning and read again safely
 $stream->seek(0);
 $stream->resume();
 ```
 
-`seek()` returns `false` on non-seekable resources (pipes, sockets, and STDIN)
-without throwing. Always check the return value if seekability matters:
+If you are calling `seek()` on a generic `ReadableResourceStream` wrapping a non-seekable resource (like TCP sockets or STDIN), it will gracefully return `false` without throwing. Always check the return value if seekability matters:
 
 ```php
 // WRONG — seek() on a pipe silently returns false
@@ -322,8 +329,7 @@ if ($stream->seek(0) === false) {
 }
 ```
 
-`seek()` throws a `StreamException` in two cases: when the stream is closed, and when
-the underlying resource is no longer valid. `tell()` follows the same contract.
+`seek()` throws a `StreamException` in two cases: when the stream is closed, and when the underlying resource is no longer valid. `tell()` follows the same contract.
 
 ```
 seek() return value
@@ -825,7 +831,7 @@ while (($line = await($stdin->readLineAsync())) !== null) {
 }
 
 // Write to STDOUT respecting backpressure
-$stdout = new WritableResourceStream(STDOUT);
+$stdout = new WritableResourceStream(STDstdout);
 $stdout->write("Hello from async PHP\n");
 
 // Write errors to STDERR
@@ -1168,7 +1174,7 @@ lifecycle management.
 | `Stream::duplex($resource, $readChunkSize, $writeSoftLimit)` | `DuplexResourceStream`   | Wrap a read/write resource          |
 | `Stream::composite($readable, $writable)`                    | `CompositeStream`        | Combine two streams into one duplex |
 | `Stream::through(?callable $transformer)`                    | `ThroughStream`          | Create a transform stream           |
-| `Stream::readableFile($path, $chunkSize)`                    | `ReadableResourceStream` | Open a file for reading             |
+| `Stream::readableFile($path, $chunkSize)`                    | `SeekableStreamInterface`| Open a file for reading             |
 | `Stream::writableFile($path, $append, $softLimit)`           | `WritableResourceStream` | Open a file for writing             |
 | `Stream::duplexFile($path, $readChunkSize, $writeSoftLimit)` | `DuplexResourceStream`   | Open a file for read/write          |
 | `Stream::stdin($chunkSize)`                                  | `ReadableResourceStream` | STDIN as a readable stream          |
@@ -1186,16 +1192,23 @@ lifecycle management.
 | `resume()`                     | `void`                    | Resume emitting `data` events. No-op if already flowing or closed |
 | `close()`                      | `void`                    | Close the stream and free the resource. No-op if already closed   |
 
-### `ReadableResourceStream`
+### `SeekableStreamInterface`
 
 Extends `ReadableStreamInterface` with:
 
-| Method                   | Returns      | Description                                                                                                                                                       |
-| ------------------------ | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `isEof()`                | `bool`       | True if the stream has reached the end of the resource                                                                                                            |
-| `isPaused()`             | `bool`       | True if the stream is currently paused                                                                                                                            |
-| `seek($offset, $whence)` | `bool`       | Reposition the stream pointer. Clears internal buffer and resets EOF. Returns `false` on non-seekable resources. Throws `StreamException` if the stream is closed |
-| `tell()`                 | `int\|false` | Return the current byte position. Returns `false` if undetermined. Throws `StreamException` if the stream is closed                                               |
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| `seek($offset, $whence)` | `bool` | Reposition the stream pointer. Clears internal buffer and resets EOF. Returns `false` on non-seekable resources. Throws `StreamException` if the stream is closed |
+| `tell()` | `int\|false` | Return the current byte position. Returns `false` if undetermined. Throws `StreamException` if the stream is closed |
+
+### `ReadableResourceStream`
+
+Implements `SeekableStreamInterface` and adds:
+
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| `isEof()` | `bool` | True if the stream has reached the end of the resource |
+| `isPaused()` | `bool` | True if the stream is currently paused |
 
 ### `WritableStreamInterface`
 
